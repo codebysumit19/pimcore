@@ -11,7 +11,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 class GenerateCustomersCommand extends Command
 {
-    // The name of the command, used like: php bin/console app:generate-customers
+    // run as: php bin/console app:generate-customers
     protected static $defaultName = 'app:generate-customers';
 
     protected function configure(): void
@@ -22,21 +22,21 @@ class GenerateCustomersCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // 1) Get or create /Customers folder as parent
-        $parentPath = '/Customers';
+        // Parent folder in Data Objects tree (you have "Customer" folder already)
+        $parentPath = '/Customer';
         $parent = DataObject::getByPath($parentPath);
 
         if (!$parent) {
-            $output->writeln('Folder /Customers not found, creating it...');
+            $output->writeln('Folder /Customer not found, creating it...');
 
             $parent = new DataObject\Folder();
-            $parent->setKey('Customers');
+            $parent->setKey('Customer');
             $parent->setParentId(1); // 1 = root "/"
             $parent->save();
 
-            $output->writeln('Created folder /Customers');
+            $output->writeln('Created folder /Customer');
         } else {
-            $output->writeln('Using existing folder /Customers');
+            $output->writeln('Using existing folder /Customer');
         }
 
         // Arrays for random data
@@ -50,12 +50,10 @@ class GenerateCustomersCommand extends Command
             'Campaign Prospects',
         ];
 
-        // 2) Create 50 customers
+        // Create 50 customers
         for ($i = 1; $i <= 50; $i++) {
             $email = "demo.customer{$i}@company.com";
 
-            // If your Customer class has a static getter by email, use it.
-            // If not, you can remove this block and always create new ones.
             if (method_exists(Customer::class, 'getByEmail')) {
                 $existing = Customer::getByEmail($email, 1);
                 if ($existing instanceof Customer) {
@@ -67,7 +65,7 @@ class GenerateCustomersCommand extends Command
             $customer = new Customer();
 
             $name = "Demo Customer {$i}";
-            $key = ElementService::getValidKey($name, 'object');
+            $key  = ElementService::getValidKey($name, 'object');
 
             $customer->setKey($key);
             $customer->setParent($parent);
@@ -80,28 +78,26 @@ class GenerateCustomersCommand extends Command
 
             // Dealer & location
             $dealerId = 'D' . str_pad((string)rand(1, 4), 3, '0', STR_PAD_LEFT);
-            $customer->setDealerID($dealerId);
-
-            $region = $regions[array_rand($regions)];
+            $customer->setDealer_id($dealerId);         // use your exact field name
+            $region    = $regions[array_rand($regions)];
             $territory = $territories[array_rand($territories)];
-            $source = $sources[array_rand($sources)];
+            $source    = $sources[array_rand($sources)];
 
             $customer->setRegion($region);
             $customer->setTerritory($territory);
-            $customer->setEngagementSource($source);
+            $customer->setEngagementsource($source);    // use your exact field name
 
             // Segments: choose 1–2 randomly
             shuffle($segmentsOptions);
             $segments = array_slice($segmentsOptions, 0, rand(1, 2));
             $customer->setSegments($segments);
 
-            // LastEventDate: some recent, some old (to demo "inactive 90 days")
-            $daysAgo = rand(0, 150); // 0 = today, up to ~5 months ago
+            // LastEventDate: some recent, some old
+            $daysAgo = rand(0, 150);
             $date = new \DateTime();
             $date->modify("-{$daysAgo} days");
             $customer->setLastEventDate($date);
 
-            // Save object in Pimcore
             $customer->save();
 
             $output->writeln("Created customer: {$name} ({$email})");
