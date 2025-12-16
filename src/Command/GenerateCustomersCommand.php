@@ -48,7 +48,7 @@ class GenerateCustomersCommand extends Command
         ];
 
         // Create 50 customers
-        for ($i = 1; $i <= 445; $i++) {
+        for ($i = 6; $i <= 450; $i++) {
             $email = "demo.customer{$i}@company.com";
 
             if (method_exists(Customer::class, 'getByEmail')) {
