@@ -1,0 +1,55 @@
+<?php
+
+namespace Symfony\Config\Pimcore\ConfigLocation;
+
+require_once __DIR__.\DIRECTORY_SEPARATOR.'VideoThumbnails'.\DIRECTORY_SEPARATOR.'WriteTargetConfig.php';
+
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
+
+/**
+ * This class is automatically generated to help in creating a config.
+ */
+class VideoThumbnailsConfig 
+{
+    private $writeTarget;
+    private $_usedProperties = [];
+
+    /**
+     * @default {"type":"symfony-config","options":{"directory":"\/var\/www\/my-project\/var\/config\/video_thumbnails"}}
+     */
+    public function writeTarget(array $value = []): \Symfony\Config\Pimcore\ConfigLocation\VideoThumbnails\WriteTargetConfig
+    {
+        if (null === $this->writeTarget) {
+            $this->_usedProperties['writeTarget'] = true;
+            $this->writeTarget = new \Symfony\Config\Pimcore\ConfigLocation\VideoThumbnails\WriteTargetConfig($value);
+        } elseif (0 < \func_num_args()) {
+            throw new InvalidConfigurationException('The node created by "writeTarget()" has already been initialized. You cannot pass values the second time you call writeTarget().');
+        }
+
+        return $this->writeTarget;
+    }
+
+    public function __construct(array $config = [])
+    {
+        if (array_key_exists('write_target', $config)) {
+            $this->_usedProperties['writeTarget'] = true;
+            $this->writeTarget = new \Symfony\Config\Pimcore\ConfigLocation\VideoThumbnails\WriteTargetConfig($config['write_target']);
+            unset($config['write_target']);
+        }
+
+        if ($config) {
+            throw new InvalidConfigurationException(sprintf('The following keys are not supported by "%s": ', __CLASS__).implode(', ', array_keys($config)));
+        }
+    }
+
+    public function toArray(): array
+    {
+        $output = [];
+        if (isset($this->_usedProperties['writeTarget'])) {
+            $output['write_target'] = $this->writeTarget->toArray();
+        }
+
+        return $output;
+    }
+
+}

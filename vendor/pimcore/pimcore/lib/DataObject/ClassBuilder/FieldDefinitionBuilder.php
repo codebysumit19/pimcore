@@ -1,0 +1,30 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * This source file is available under the terms of the
+ * Pimcore Open Core License (POCL)
+ * Full copyright and license information is available in
+ * LICENSE.md which is distributed with this source code.
+ *
+ *  @copyright  Copyright (c) Pimcore GmbH (https://www.pimcore.com)
+ *  @license    Pimcore Open Core License (POCL)
+ */
+
+namespace Pimcore\DataObject\ClassBuilder;
+
+use Pimcore\Model\DataObject\ClassDefinition;
+
+class FieldDefinitionBuilder implements FieldDefinitionBuilderInterface
+{
+    public function buildFieldDefinition(ClassDefinition $classDefinition, ClassDefinition\Data $fieldDefinition): string
+    {
+        $cd = $fieldDefinition->getGetterCode($classDefinition);
+
+        if (!$fieldDefinition instanceof ClassDefinition\Data\ReverseObjectRelation) {
+            $cd .= $fieldDefinition->getSetterCode($classDefinition);
+        }
+
+        return $cd;
+    }
+}

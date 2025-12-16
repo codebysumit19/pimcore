@@ -1,0 +1,42 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * This source file is available under the terms of the
+ * Pimcore Open Core License (POCL)
+ * Full copyright and license information is available in
+ * LICENSE.md which is distributed with this source code.
+ *
+ *  @copyright  Copyright (c) Pimcore GmbH (https://www.pimcore.com)
+ *  @license    Pimcore Open Core License (POCL)
+ */
+
+namespace Pimcore\Bundle\AdminBundle\Controller\Admin;
+
+use Doctrine\DBAL\Connection;
+use Pimcore\Bundle\AdminBundle\Controller\AdminAbstractController;
+use Pimcore\Tool\Requirements;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Profiler\Profiler;
+use Symfony\Component\Routing\Attribute\Route;
+
+/**
+ * @internal
+ */
+#[Route('/install')]
+class InstallController extends AdminAbstractController
+{
+    #[Route('/check', name: 'pimcore_admin_install_check', methods: ['GET', 'POST'])]
+    public function checkAction(Request $request, Connection $db, ?Profiler $profiler): Response
+    {
+        if ($profiler) {
+            $profiler->disable();
+        }
+
+        $viewParams = Requirements::checkAll($db);
+        $viewParams['headless'] = $request->query->getBoolean('headless') || $request->request->getBoolean('headless');
+
+        return $this->render('@PimcoreAdmin/admin/install/check.html.twig', $viewParams);
+    }
+}
