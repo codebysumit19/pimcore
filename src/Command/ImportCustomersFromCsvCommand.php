@@ -28,7 +28,7 @@ class ImportCustomersFromCsvCommand extends Command
             $output->writeln('Folder /Customers not found, creating it...');
             $parent = new Folder();
             $parent->setKey('Customers');
-            $parent->setParentId(1); // 1 = root "/"
+            $parent->setParentId(1); // root "/"
             $parent->save();
             $output->writeln('Created folder /Customers');
         } else {
@@ -48,7 +48,7 @@ class ImportCustomersFromCsvCommand extends Command
             return Command::FAILURE;
         }
 
-        // 3) Read header row (ignore values, just move pointer)
+        // 3) Read header row
         $header = fgetcsv($handle, 0, ',');
         if ($header === false) {
             $output->writeln('<error>Empty CSV</error>');
@@ -56,7 +56,8 @@ class ImportCustomersFromCsvCommand extends Command
             return Command::FAILURE;
         }
 
-        // Expected order: name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date [file:139]
+        // Expected order (your CSV):
+        // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
 
         $rowNum = 0;
         while (($row = fgetcsv($handle, 0, ',')) !== false) {
@@ -93,7 +94,6 @@ class ImportCustomersFromCsvCommand extends Command
                 $customer->setParent($parent);
             }
 
-            // Map CSV fields to Customer object
             $customer->setPublished(true);
             $customer->setName($name ?: $email);
             $customer->setEmail($email);
@@ -102,9 +102,8 @@ class ImportCustomersFromCsvCommand extends Command
             $customer->setRegion($region);
             $customer->setTerritory($territory);
             $customer->setEngagementsource($source);
-            $customer->setSegments([$segment]); // single segment
+            $customer->setSegments([$segment]);
 
-            // Parse last event date
             if (!empty($lastEventDate)) {
                 try {
                     $date = Carbon::parse($lastEventDate);

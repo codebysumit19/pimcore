@@ -19,7 +19,7 @@ class GenerateCustomersCommand extends Command
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // Parent folder in Data Objects tree
+        // Parent folder in Data Objects tree -> /Customer
         $parentPath = '/Customer';
         $parent = DataObject::getByPath($parentPath);
 
@@ -36,9 +36,13 @@ class GenerateCustomersCommand extends Command
             $output->writeln('Using existing folder /Customer');
         }
 
-        // Arrays for random data
         $regions = ['North', 'South', 'East', 'West'];
-        $territories = ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Hyderabad', 'Pune', 'Kolkata', 'Noida', 'Ranchi', 'Bhubaneswar', 'Surat', 'Kanpur', 'Vijayawada', 'Mangalore', 'Ahmedabad', 'Indore', 'Jaipur', 'Lucknow', 'Guwahati', 'Hyderabad'];
+        $territories = [
+            'Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Hyderabad', 'Pune',
+            'Kolkata', 'Noida', 'Ranchi', 'Bhubaneswar', 'Surat', 'Kanpur',
+            'Vijayawada', 'Mangalore', 'Ahmedabad', 'Indore', 'Jaipur',
+            'Lucknow', 'Guwahati'
+        ];
         $sources = ['Solutionara', 'Email', 'Web', 'ERP', 'CRM'];
         $segmentsOptions = [
             'High-Value Customers',
@@ -47,7 +51,6 @@ class GenerateCustomersCommand extends Command
             'Campaign Prospects',
         ];
 
-        // Create 50 customers
         for ($i = 1; $i <= 50; $i++) {
             $email = "demo.customer{$i}@company.com";
 
@@ -76,6 +79,7 @@ class GenerateCustomersCommand extends Command
             // Dealer & location
             $dealerId = 'D' . str_pad((string)rand(1, 4), 3, '0', STR_PAD_LEFT);
             $customer->setDealer_id($dealerId);
+
             $region    = $regions[array_rand($regions)];
             $territory = $territories[array_rand($territories)];
             $source    = $sources[array_rand($sources)];
@@ -89,7 +93,7 @@ class GenerateCustomersCommand extends Command
             $segments = array_slice($segmentsOptions, 0, rand(1, 2));
             $customer->setSegments($segments);
 
-            // LastEventDate: some recent, some old
+            // LastEventDate
             $daysAgo = rand(0, 150);
             $date = Carbon::now()->subDays($daysAgo);
             $customer->setLastEventDate($date);
