@@ -2,6 +2,7 @@
 
 namespace App\Command;
 
+use Carbon\Carbon;
 use Pimcore\Console\AbstractCommand;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\Service as ObjectService;
@@ -87,13 +88,15 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             $customer->setSegments([$segment]);          // multiselection expects array
 
             if (!empty($lastEventDate)) {
-                try {
-                    $date = new \DateTime($lastEventDate);
-                    $customer->setLastEventDate($date);
-                } catch (\Exception $e) {
-                    $this->writeError("Row $rowNumber: invalid date '$lastEventDate', skipping date.");
-                }
-            }
+    try {
+        // create Carbon instance instead of DateTime
+        $date = Carbon::parse($lastEventDate);
+        $customer->setLastEventDate($date);
+    } catch (\Exception $e) {
+        $this->writeError("Row $rowNumber: invalid date '$lastEventDate', skipping date.");
+    }
+}
+
 
             // 6) Save
             $customer->save();
