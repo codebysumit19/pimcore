@@ -5,6 +5,7 @@ namespace App\Command;
 use Carbon\Carbon;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\Customer;
+use Pimcore\Model\DataObject\Folder;
 use Pimcore\Model\Element\Service as ElementService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -25,7 +26,7 @@ class ImportCustomersFromCsvCommand extends Command
 
         if (!$parent) {
             $output->writeln('Folder /Customers not found, creating it...');
-            $parent = new DataObject\Folder();
+            $parent = new Folder();
             $parent->setKey('Customers');
             $parent->setParentId(1); // root "/"
             $parent->save();
@@ -49,6 +50,7 @@ class ImportCustomersFromCsvCommand extends Command
         $header = fgetcsv($handle, 0, ',');
         if ($header === false) {
             $output->writeln('<error>Empty CSV</error>');
+            fclose($handle);
             return Command::FAILURE;
         }
 
@@ -56,8 +58,19 @@ class ImportCustomersFromCsvCommand extends Command
         while (($row = fgetcsv($handle, 0, ',')) !== false) {
             $rowNum++;
 
-            // CSV columns: name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
-            [$name, $email, $phone, $dealerId, $region, $territory, $source, $segment, $lastEventDate] = $row;
+            // CSV columns:
+            // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
+            [
+                $name,
+                $email,
+                $phone,
+                $dealerId,
+                $region,
+                $territory,
+                $source,
+                $segment,
+                $lastEventDate
+            ] = $row;
 
             if (!$email) {
                 $output->writeln("Row {$rowNum}: missing email, skipping");
