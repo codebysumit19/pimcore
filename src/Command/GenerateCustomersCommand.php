@@ -5,7 +5,6 @@ namespace App\Command;
 use Carbon\Carbon;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\Customer;
-use Pimcore\Model\DataObject\Folder;
 use Pimcore\Model\Element\Service as ElementService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -13,115 +12,94 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
-    name: 'app:import-customers-csv',
-    description: 'Create /Customers folder and import customers from CSV'
+    name: 'app:generate-customers',
+    description: 'Generate 50 demo Customer objects for CDP POC'
 )]
-class ImportCustomersFromCsvCommand extends Command
+class GenerateCustomersCommand extends Command
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // 1) Ensure /Customers folder exists in Data Objects tree
-        $parentPath = '/Customers';
+        // Parent folder in Data Objects tree
+        $parentPath = '/Customer';
         $parent = DataObject::getByPath($parentPath);
 
-        if (!$parent instanceof Folder) {
-            $output->writeln('Folder /Customers not found, creating it...');
-            $parent = new Folder();
-            $parent->setKey('Customers');
+        if (!$parent) {
+            $output->writeln('Folder /Customer not found, creating it...');
+
+            $parent = new DataObject\Folder();
+            $parent->setKey('Customer');
             $parent->setParentId(1); // 1 = root "/"
             $parent->save();
-            $output->writeln('Created folder /Customers');
+
+            $output->writeln('Created folder /Customer');
         } else {
-            $output->writeln('Using existing folder /Customers');
+            $output->writeln('Using existing folder /Customer');
         }
 
-        // 2) CSV path (your attached file)
-        $filePath = PIMCORE_PROJECT_ROOT . '/var/import/customers_500.csv';
+        // Arrays for random data
+        $regions = ['North', 'South', 'East', 'West'];
+        $territories = ['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Hyderabad', 'Pune', 'Kolkata', 'Noida', 'Ranchi', 'Bhubaneswar', 'Surat', 'Kanpur', 'Vijayawada', 'Mangalore', 'Ahmedabad', 'Indore', 'Jaipur', 'Lucknow', 'Guwahati', 'Hyderabad'];
+        $sources = ['Solutionara', 'Email', 'Web', 'ERP', 'CRM'];
+        $segmentsOptions = [
+            'High-Value Customers',
+            'Frequent Buyers',
+            'Inactive 90 Days',
+            'Campaign Prospects',
+        ];
 
-        if (!file_exists($filePath)) {
-            $output->writeln("<error>CSV not found: {$filePath}</error>");
-            return Command::FAILURE;
-        }
+        // Create 50 customers
+        for ($i = 1; $i <= 50; $i++) {
+            $email = "demo.customer{$i}@company.com";
 
-        if (($handle = fopen($filePath, 'r')) === false) {
-            $output->writeln('<error>Cannot open CSV file</error>');
-            return Command::FAILURE;
-        }
-
-        // 3) Read header row (and ignore it)
-        $header = fgetcsv($handle, 0, ',');
-        if ($header === false) {
-            $output->writeln('<error>Empty CSV</error>');
-            fclose($handle);
-            return Command::FAILURE;
-        }
-
-        // Expected header ORDER based on your CSV:
-        // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
-        // (column names can differ slightly, but order must match) [file:139]
-
-        $rowNum = 0;
-        while (($row = fgetcsv($handle, 0, ',')) !== false) {
-            $rowNum++;
-
-            if (count($row) < 9) {
-                $output->writeln("Row {$rowNum}: not enough columns, skipping");
-                continue;
-            }
-
-            [
-                $name,
-                $email,
-                $phone,
-                $dealerId,
-                $region,
-                $territory,
-                $source,
-                $segment,
-                $lastEventDate,
-            ] = $row;
-
-            if (!$email) {
-                $output->writeln("Row {$rowNum}: missing email, skipping");
-                continue;
-            }
-
-            // 4) Get or create customer by email
-            $customer = Customer::getByEmail($email, 1);
-            if (!$customer instanceof Customer) {
-                $customer = new Customer();
-                $key = ElementService::getValidKey($name ?: $email, 'object');
-                $customer->setKey($key);
-                $customer->setParent($parent);
-            }
-
-            // Map CSV fields to Customer object fields
-            $customer->setPublished(true);
-            $customer->setName($name ?: $email);
-            $customer->setEmail($email);
-            $customer->setPhone($phone);
-            $customer->setDealer_id($dealerId);
-            $customer->setRegion($region);
-            $customer->setTerritory($territory);
-            $customer->setEngagementsource($source);
-            $customer->setSegments([$segment]); // single segment from CSV
-
-            // Parse last_event_date (e.g. 2025-08-12)
-            if (!empty($lastEventDate)) {
-                try {
-                    $date = Carbon::parse($lastEventDate);
-                    $customer->setLastEventDate($date);
-                } catch (\Throwable $e) {
-                    $output->writeln("Row {$rowNum}: invalid date '{$lastEventDate}', skipping date");
+            if (method_exists(Customer::class, 'getByEmail')) {
+                $existing = Customer::getByEmail($email, 1);
+                if ($existing instanceof Customer) {
+                    $output->writeln("Skipping, already exists: $email");
+                    continue;
                 }
             }
 
+            $customer = new Customer();
+
+            $name = "Demo Customer {$i}";
+            $key  = ElementService::getValidKey($name, 'object');
+
+            $customer->setKey($key);
+            $customer->setParent($parent);
+            $customer->setPublished(true);
+
+            // Basic identity
+            $customer->setName($name);
+            $customer->setEmail($email);
+            $customer->setPhone('98765' . str_pad((string)$i, 5, '0', STR_PAD_LEFT));
+
+            // Dealer & location
+            $dealerId = 'D' . str_pad((string)rand(1, 4), 3, '0', STR_PAD_LEFT);
+            $customer->setDealer_id($dealerId);
+            $region    = $regions[array_rand($regions)];
+            $territory = $territories[array_rand($territories)];
+            $source    = $sources[array_rand($sources)];
+
+            $customer->setRegion($region);
+            $customer->setTerritory($territory);
+            $customer->setEngagementsource($source);
+
+            // Segments: choose 1–2 randomly
+            shuffle($segmentsOptions);
+            $segments = array_slice($segmentsOptions, 0, rand(1, 2));
+            $customer->setSegments($segments);
+
+            // LastEventDate: some recent, some old
+            $daysAgo = rand(0, 150);
+            $date = Carbon::now()->subDays($daysAgo);
+            $customer->setLastEventDate($date);
+
             $customer->save();
-            $output->writeln("Imported/updated: {$name} ({$email})");
+
+            $output->writeln("Created customer: {$name} ({$email})");
         }
 
-        fclose($handle);
-        $output->writeln('CSV import finished.');
+        $output->writeln('Done generating 50 demo customers.');
         return Command::SUCCESS;
     }
 }
