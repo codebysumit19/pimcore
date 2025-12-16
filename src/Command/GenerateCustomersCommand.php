@@ -51,7 +51,7 @@ class GenerateCustomersCommand extends Command
             'Campaign Prospects',
         ];
 
-        for ($i = 1; $i <= 50; $i++) {
+        for ($i = 600; $i <= 650; $i++) {
             $email = "demo.customer{$i}@company.com";
 
             if (method_exists(Customer::class, 'getByEmail')) {

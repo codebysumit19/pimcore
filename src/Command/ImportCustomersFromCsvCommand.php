@@ -56,7 +56,7 @@ class ImportCustomersFromCsvCommand extends Command
             return Command::FAILURE;
         }
 
-        // Expected order (your CSV):
+        // Expected order:
         // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
 
         $rowNum = 0;
@@ -102,7 +102,7 @@ class ImportCustomersFromCsvCommand extends Command
             $customer->setRegion($region);
             $customer->setTerritory($territory);
             $customer->setEngagementsource($source);
-            $customer->setSegments([$segment]);
+            $customer->setSegments([$segment]); // CSV "segment" → Pimcore "segments"
 
             if (!empty($lastEventDate)) {
                 try {
