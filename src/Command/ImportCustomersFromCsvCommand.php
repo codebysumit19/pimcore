@@ -9,6 +9,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 class ImportCustomersFromCsvCommand extends Command
 {
+    // IMPORTANT: must not be null
     protected static $defaultName = 'app:import-customers';
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -25,7 +26,7 @@ class ImportCustomersFromCsvCommand extends Command
             return Command::FAILURE;
         }
 
-        // adjust delimiter if needed (comma vs semicolon)
+        // adjust delimiter if needed
         $headers = fgetcsv($handle, 0, ';');
 
         while (($row = fgetcsv($handle, 0, ';')) !== false) {
@@ -33,10 +34,10 @@ class ImportCustomersFromCsvCommand extends Command
 
             $customer = new Customer();
             $customer->setKey(uniqid('cust_'));
-            $customer->setParentId(1); // TODO: set to the correct folder ID
+            $customer->setParentId(1); // TODO: correct folder ID
             $customer->setPublished(true);
 
-            // TODO: adjust field names to your Customer data object definition
+            // TODO: adjust to your real fields
             $customer->setFirstname($data['firstname'] ?? '');
             $customer->setLastname($data['lastname'] ?? '');
             $customer->setEmail($data['email'] ?? '');
