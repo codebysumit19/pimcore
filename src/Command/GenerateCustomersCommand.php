@@ -5,9 +5,16 @@ namespace App\Command;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\Customer;
 use Pimcore\Model\Element\Service as ElementService;
+use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+
+
+#[AsCommand(
+    name: 'app:generate-customers',
+    description: 'Generate 50 demo Customer objects for CDP POC'
+)]
 
 class GenerateCustomersCommand extends Command
 {
