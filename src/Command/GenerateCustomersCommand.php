@@ -41,7 +41,6 @@ class ImportCustomersFromCsvCommand extends Command
             return Command::FAILURE;
         }
 
-        // header
         $header = fgetcsv($handle, 0, ',');
         if ($header === false) {
             $output->writeln('<error>Empty CSV</error>');
