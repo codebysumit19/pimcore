@@ -25,27 +25,21 @@ class ImportCustomersFromCsvCommand extends Command
             return Command::FAILURE;
         }
 
-        // Assuming first row is header
-        $headers = fgetcsv($handle, 0, ';'); // adjust delimiter if needed
+        // adjust delimiter if needed (comma vs semicolon)
+        $headers = fgetcsv($handle, 0, ';');
 
         while (($row = fgetcsv($handle, 0, ';')) !== false) {
             $data = array_combine($headers, $row);
 
             $customer = new Customer();
             $customer->setKey(uniqid('cust_'));
-            $customer->setParentId(1); // adjust parent folder ID
+            $customer->setParentId(1); // TODO: set to the correct folder ID
             $customer->setPublished(true);
 
-            // Example: adapt to your real field names
-            if (isset($data['firstname'])) {
-                $customer->setFirstname($data['firstname']);
-            }
-            if (isset($data['lastname'])) {
-                $customer->setLastname($data['lastname']);
-            }
-            if (isset($data['email'])) {
-                $customer->setEmail($data['email']);
-            }
+            // TODO: adjust field names to your Customer data object definition
+            $customer->setFirstname($data['firstname'] ?? '');
+            $customer->setLastname($data['lastname'] ?? '');
+            $customer->setEmail($data['email'] ?? '');
 
             $customer->save();
         }
