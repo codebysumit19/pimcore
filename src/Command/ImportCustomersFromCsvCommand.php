@@ -80,11 +80,13 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             $customer->setName($name);
             $customer->setEmail($email);
             $customer->setPhone($phone);
-            $customer->setDealerId($dealerId);
+            $customer->setDealer_id($dealerId);        // matches field dealer_id
             $customer->setRegion($region);
             $customer->setTerritory($territory);
-            $customer->setEngagementSource($engagementSource);
-            $customer->setSegment($segment);
+            $customer->setEngagementsource($engagementSource);
+            $customer->setSegments([$segment]);        // multiselection expects array
+            $customer->setLastEventDate($date);
+
 
             if (!empty($lastEventDate)) {
                 try {
