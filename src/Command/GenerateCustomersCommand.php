@@ -19,6 +19,7 @@ class ImportCustomersFromCsvCommand extends Command
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        // 1) Ensure /Customers folder exists
         $parentPath = '/Customers';
         $parent = DataObject::getByPath($parentPath);
 
@@ -26,11 +27,14 @@ class ImportCustomersFromCsvCommand extends Command
             $output->writeln('Folder /Customers not found, creating it...');
             $parent = new DataObject\Folder();
             $parent->setKey('Customers');
-            $parent->setParentId(1);
+            $parent->setParentId(1); // root "/"
             $parent->save();
+        } else {
+            $output->writeln('Using existing folder /Customers');
         }
 
-        $filePath = PIMCORE_PROJECT_ROOT . '/import/customers/customers_500.csv';
+        // 2) CSV path
+        $filePath = PIMCORE_PROJECT_ROOT . '/var/import/customers_500.csv';
         if (!file_exists($filePath)) {
             $output->writeln("<error>CSV not found: {$filePath}</error>");
             return Command::FAILURE;
@@ -41,6 +45,7 @@ class ImportCustomersFromCsvCommand extends Command
             return Command::FAILURE;
         }
 
+        // 3) Read header
         $header = fgetcsv($handle, 0, ',');
         if ($header === false) {
             $output->writeln('<error>Empty CSV</error>');
@@ -51,13 +56,15 @@ class ImportCustomersFromCsvCommand extends Command
         while (($row = fgetcsv($handle, 0, ',')) !== false) {
             $rowNum++;
 
-            [$name,$email,$phone,$dealerId,$region,$territory,$source,$segment,$lastEventDate] = $row;
+            // CSV columns: name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
+            [$name, $email, $phone, $dealerId, $region, $territory, $source, $segment, $lastEventDate] = $row;
 
             if (!$email) {
                 $output->writeln("Row {$rowNum}: missing email, skipping");
                 continue;
             }
 
+            // 4) Get or create customer by email
             $customer = Customer::getByEmail($email, 1);
             if (!$customer instanceof Customer) {
                 $customer = new Customer();
