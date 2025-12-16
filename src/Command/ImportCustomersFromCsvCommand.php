@@ -44,7 +44,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             return 1;
         }
 
-        $rowNumber = 1;
+        $rowNumber = 0; // will give customer1, customer2, ...
         $created   = 0;
 
         while (($row = fgetcsv($handle)) !== false) {
@@ -67,26 +67,24 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $lastEventDate,
             ] = $row;
 
-            // 4) Create new Customer object (generated class from your Customer definition)
+            // 4) Create new Customer object
             $customer = new DataObject\Customer();
             $customer->setParent($customersFolder);
 
-            // Key should be unique & URL‑safe; email+name is just one example
-            $key = ElementService::getValidKey($email . '-' . $name, 'object');
+            // Object key = customer1, customer2, ...
+            $key = ElementService::getValidKey('customer' . $rowNumber, 'object');
             $customer->setKey($key);
             $customer->setPublished(true);
 
-            // 5) Map CSV fields to object fields (assuming these fields exist in the class)
+            // 5) Map CSV fields to object fields
             $customer->setName($name);
             $customer->setEmail($email);
             $customer->setPhone($phone);
-            $customer->setDealer_id($dealerId);        // matches field dealer_id
+            $customer->setDealer_id($dealerId);          // field dealer_id
             $customer->setRegion($region);
             $customer->setTerritory($territory);
             $customer->setEngagementsource($engagementSource);
-            $customer->setSegments([$segment]);        // multiselection expects array
-            $customer->setLastEventDate($date);
-
+            $customer->setSegments([$segment]);          // multiselection expects array
 
             if (!empty($lastEventDate)) {
                 try {
