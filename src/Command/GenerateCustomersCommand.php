@@ -20,22 +20,24 @@ class ImportCustomersFromCsvCommand extends Command
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // 1) Ensure /Customers folder exists
+        // 1) Ensure /Customers folder exists in Data Objects tree
         $parentPath = '/Customers';
         $parent = DataObject::getByPath($parentPath);
 
-        if (!$parent) {
+        if (!$parent instanceof Folder) {
             $output->writeln('Folder /Customers not found, creating it...');
             $parent = new Folder();
             $parent->setKey('Customers');
-            $parent->setParentId(1); // root "/"
+            $parent->setParentId(1); // 1 = root "/"
             $parent->save();
+            $output->writeln('Created folder /Customers');
         } else {
             $output->writeln('Using existing folder /Customers');
         }
 
-        // 2) CSV path
+        // 2) CSV path (your attached file)
         $filePath = PIMCORE_PROJECT_ROOT . '/var/import/customers_500.csv';
+
         if (!file_exists($filePath)) {
             $output->writeln("<error>CSV not found: {$filePath}</error>");
             return Command::FAILURE;
@@ -46,7 +48,7 @@ class ImportCustomersFromCsvCommand extends Command
             return Command::FAILURE;
         }
 
-        // 3) Read header
+        // 3) Read header row (and ignore it)
         $header = fgetcsv($handle, 0, ',');
         if ($header === false) {
             $output->writeln('<error>Empty CSV</error>');
@@ -54,12 +56,19 @@ class ImportCustomersFromCsvCommand extends Command
             return Command::FAILURE;
         }
 
+        // Expected header ORDER based on your CSV:
+        // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
+        // (column names can differ slightly, but order must match) [file:139]
+
         $rowNum = 0;
         while (($row = fgetcsv($handle, 0, ',')) !== false) {
             $rowNum++;
 
-            // CSV columns:
-            // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
+            if (count($row) < 9) {
+                $output->writeln("Row {$rowNum}: not enough columns, skipping");
+                continue;
+            }
+
             [
                 $name,
                 $email,
@@ -69,7 +78,7 @@ class ImportCustomersFromCsvCommand extends Command
                 $territory,
                 $source,
                 $segment,
-                $lastEventDate
+                $lastEventDate,
             ] = $row;
 
             if (!$email) {
@@ -86,6 +95,7 @@ class ImportCustomersFromCsvCommand extends Command
                 $customer->setParent($parent);
             }
 
+            // Map CSV fields to Customer object fields
             $customer->setPublished(true);
             $customer->setName($name ?: $email);
             $customer->setEmail($email);
@@ -94,14 +104,20 @@ class ImportCustomersFromCsvCommand extends Command
             $customer->setRegion($region);
             $customer->setTerritory($territory);
             $customer->setEngagementsource($source);
-            $customer->setSegments([$segment]);
+            $customer->setSegments([$segment]); // single segment from CSV
 
-            if ($lastEventDate) {
-                $date = Carbon::parse($lastEventDate);
-                $customer->setLastEventDate($date);
+            // Parse last_event_date (e.g. 2025-08-12)
+            if (!empty($lastEventDate)) {
+                try {
+                    $date = Carbon::parse($lastEventDate);
+                    $customer->setLastEventDate($date);
+                } catch (\Throwable $e) {
+                    $output->writeln("Row {$rowNum}: invalid date '{$lastEventDate}', skipping date");
+                }
             }
 
             $customer->save();
+            $output->writeln("Imported/updated: {$name} ({$email})");
         }
 
         fclose($handle);
