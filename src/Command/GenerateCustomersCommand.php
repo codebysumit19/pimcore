@@ -2,6 +2,7 @@
 
 namespace App\Command;
 
+use Carbon\Carbon;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\Customer;
 use Pimcore\Model\Element\Service as ElementService;
@@ -10,23 +11,12 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-
 #[AsCommand(
     name: 'app:generate-customers',
     description: 'Generate 50 demo Customer objects for CDP POC'
 )]
-
 class GenerateCustomersCommand extends Command
 {
-    // run as: php bin/console app:generate-customers
-    protected static $defaultName = 'app:generate-customers';
-
-    protected function configure(): void
-    {
-        $this
-            ->setDescription('Generate 50 demo Customer objects for CDP POC');
-    }
-
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         // Parent folder in Data Objects tree (you have "Customer" folder already)
@@ -85,14 +75,14 @@ class GenerateCustomersCommand extends Command
 
             // Dealer & location
             $dealerId = 'D' . str_pad((string)rand(1, 4), 3, '0', STR_PAD_LEFT);
-            $customer->setDealer_id($dealerId);         // use your exact field name
+            $customer->setDealer_id($dealerId);
             $region    = $regions[array_rand($regions)];
             $territory = $territories[array_rand($territories)];
             $source    = $sources[array_rand($sources)];
 
             $customer->setRegion($region);
             $customer->setTerritory($territory);
-            $customer->setEngagementsource($source);    // use your exact field name
+            $customer->setEngagementsource($source);
 
             // Segments: choose 1–2 randomly
             shuffle($segmentsOptions);
@@ -101,8 +91,7 @@ class GenerateCustomersCommand extends Command
 
             // LastEventDate: some recent, some old
             $daysAgo = rand(0, 150);
-            $date = new \DateTime();
-            $date->modify("-{$daysAgo} days");
+            $date = Carbon::now()->subDays($daysAgo);
             $customer->setLastEventDate($date);
 
             $customer->save();
