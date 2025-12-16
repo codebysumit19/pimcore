@@ -13,29 +13,24 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'app:import-customers-csv',
-    description: 'Create /Customer folder and import customers from CSV'
+    description: 'Create /Customers folder and import customers from CSV'
 )]
 class ImportCustomersFromCsvCommand extends Command
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // 1) Ensure /Customer folder exists
         $parentPath = '/Customers';
-$parent = DataObject::getByPath($parentPath);
+        $parent = DataObject::getByPath($parentPath);
 
-if (!$parent) {
-    $output->writeln('Folder /Customers not found, creating it...');
-    $parent = new DataObject\Folder();
-    $parent->setKey('Customers');
-    $parent->setParentId(1); // root "/"
-    $parent->save();
-} else {
-    $output->writeln('Using existing folder /Customers');
-}
+        if (!$parent) {
+            $output->writeln('Folder /Customers not found, creating it...');
+            $parent = new DataObject\Folder();
+            $parent->setKey('Customers');
+            $parent->setParentId(1);
+            $parent->save();
+        }
 
-
-        // 2) Open CSV file
-        $filePath = PIMCORE_PROJECT_ROOT . '/var/import/customers_500.csv';
+        $filePath = PIMCORE_PROJECT_ROOT . '/import/customers/customers_500.csv';
         if (!file_exists($filePath)) {
             $output->writeln("<error>CSV not found: {$filePath}</error>");
             return Command::FAILURE;
@@ -46,7 +41,7 @@ if (!$parent) {
             return Command::FAILURE;
         }
 
-        // 3) Read header
+        // header
         $header = fgetcsv($handle, 0, ',');
         if ($header === false) {
             $output->writeln('<error>Empty CSV</error>');
@@ -56,25 +51,14 @@ if (!$parent) {
         $rowNum = 0;
         while (($row = fgetcsv($handle, 0, ',')) !== false) {
             $rowNum++;
-            // match header order
-            [
-                $name,
-                $email,
-                $phone,
-                $dealerId,
-                $region,
-                $territory,
-                $source,
-                $segment,
-                $lastEventDate,
-            ] = $row;
+
+            [$name,$email,$phone,$dealerId,$region,$territory,$source,$segment,$lastEventDate] = $row;
 
             if (!$email) {
                 $output->writeln("Row {$rowNum}: missing email, skipping");
                 continue;
             }
 
-            // 4) Update or create by email
             $customer = Customer::getByEmail($email, 1);
             if (!$customer instanceof Customer) {
                 $customer = new Customer();
