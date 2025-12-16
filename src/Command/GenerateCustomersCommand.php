@@ -27,7 +27,7 @@ class GenerateCustomersCommand extends Command
         if (!$parent) {
             $parent = new DataObject\Folder();
             $parent->setKey('Customers');
-            $parent->setParentId(1); // 1 = / (root)
+            $parent->setParentId(21); // 1 = / (root)
             $parent->save();
             $output->writeln('Created folder /Customers');
         }
