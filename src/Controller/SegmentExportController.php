@@ -89,11 +89,12 @@ class SegmentExportController extends FrontendController
                 'name'              => $customer->getName(),
                 'email'             => $customer->getEmail(),
                 'phone'             => $customer->getPhone(),
-                'dealerId'          => $customer->getDealerId(),
-                'region'            => $customer->getRegion(),
-                'territory'         => $customer->getTerritory(),
-                'engagementSource'  => $customer->getEngagementSource(),
-                'segments'          => $customer->getSegments(),
+                'dealerId'         => $customer->getDealer_id(),
+                'region'           => $customer->getRegion(),
+                'territory'        => $customer->getTerritory(),
+                'engagementSource' => $customer->getEngagementsource(),
+                'segments'         => $customer->getSegments(),
+
             ];
         }
 
@@ -129,9 +130,10 @@ class SegmentExportController extends FrontendController
                 'name'              => $prospect->getName(),
                 'email'             => $prospect->getEmail(),
                 'phone'             => $prospect->getPhone(),
-                'campaignCode'      => $prospect->getCampaignCode(),
-                'engagementSource'  => $prospect->getEngagementSource(),
-                'segments'          => $prospect->getSegments(),
+                'campaignCode'     => $prospect->getCampaignCode(),      // if field is 'campaignCode'
+                'engagementSource' => $prospect->getEngagementSource(),  // only if class field is camelCase
+                'segments'         => $prospect->getSegments(),
+
             ];
         }
 
