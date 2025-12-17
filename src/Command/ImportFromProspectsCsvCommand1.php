@@ -65,7 +65,7 @@ class ImportProspectsFromCsvCommand1 extends AbstractCommand
             ] = $row;
 
             // 4) Create new Prospect object
-            $prospect = new DataObject\Prospect();
+            $prospect = new DataObject\Prospects();
             $prospect->setParent($prospectsFolder);
 
             // Object key = prospect1, prospect2, ...
