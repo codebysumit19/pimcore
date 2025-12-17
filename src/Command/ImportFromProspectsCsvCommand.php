@@ -11,10 +11,10 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
-    name: 'app:import-prospects',
+    name: 'app:import-prospects1',
     description: 'Import prospects from CSV into /Prospects data object folder'
 )]
-class ImportProspectsFromCsvCommand extends AbstractCommand
+class ImportProspectsFromCsvCommand1 extends AbstractCommand
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
