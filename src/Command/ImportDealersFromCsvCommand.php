@@ -64,7 +64,7 @@ class ImportDealersFromCsvCommand extends AbstractCommand
             ] = $row;
 
             // 4) Create new Dealer object (your class must be DataObject\Dealers)
-            $dealer = new DataObject\Dealers();
+            $dealer = new DataObject\Dealer();
             $dealer->setParent($dealersFolder);
 
             // Object key = dealer ID (e.g. D001, D002, ...)
