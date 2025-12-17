@@ -1,5 +1,9 @@
 <?php
 
+use Pimcore\Bundle\SimpleBackendSearchBundle\PimcoreSimpleBackendSearchBundle;
+use Pimcore\Bundle\DataHubBundle\PimcoreDataHubBundle;
+
 return [
-    Pimcore\Bundle\SimpleBackendSearchBundle\PimcoreSimpleBackendSearchBundle::class => ['all' => true],
+    PimcoreSimpleBackendSearchBundle::class => ['all' => true],
+    PimcoreDataHubBundle::class => ['all' => true],
 ];
