@@ -13,7 +13,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'app:import-customers',
-    description: 'Import customers from CSV into /Customers data object folder with identity resolution'
+    description: 'Import customers from CSV into /Customers with identity resolution & master profile'
 )]
 class ImportCustomersFromCsvCommand extends AbstractCommand
 {
@@ -37,8 +37,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             return 1;
         }
 
-        // Expected header:
-        // name,email,phone,dealer_id,region,territory,engagementsource,segment,isMasterProfile,last event date
+        // Expected header (9 columns):
+        // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
         $header = fgetcsv($handle);
         if ($header === false) {
             $this->writeError('Empty CSV (no header row).');
@@ -52,8 +52,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
-            if (count($row) < 10) {
-                $this->writeError("Row $rowNumber has fewer than 10 columns, skipping.");
+            if (count($row) < 9) {
+                $this->writeError("Row $rowNumber has fewer than 9 columns, skipping.");
                 continue;
             }
 
@@ -66,16 +66,14 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $territory,
                 $engagementSource,
                 $segment,
-                $isMasterProfile,
                 $lastEventDate,
-            ] = $row;   // matches CSV header [file:511]
+            ] = $row;   // matches customers.csv [file:511]
 
-            $email          = trim((string)$email);
-            $phone          = trim((string)$phone);
-            $dealerId       = trim((string)$dealerId);
-            $isMasterProfile = trim((string)$isMasterProfile);
+            $email    = trim((string)$email);
+            $phone    = trim((string)$phone);
+            $dealerId = trim((string)$dealerId);
 
-            // ---------- Identity resolution ----------
+            // ---------- Identity resolution (find master profile) ----------
             $customer = null;
 
             // 1) match by email
@@ -102,10 +100,18 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
+            // 4) if found but not a master profile, do NOT merge into it
+            // IsMasterProfile is a Select with values like "Yes"/"No"
+            if ($customer instanceof DataObject\Customer && $customer->getIsMasterProfile() !== 'Yes') {
+                $customer = null;
+            }
+
             // ---------- Create or update ----------
             if ($customer instanceof DataObject\Customer) {
+                // existing master profile → UPDATE / merge
                 $updated++;
             } else {
+                // new master profile → CREATE
                 $customer = new DataObject\Customer();
                 $customer->setParent($customersFolder);
 
@@ -113,10 +119,13 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setKey($key);
                 $customer->setPublished(true);
 
+                // mark as master profile
+                $customer->setIsMasterProfile('Yes');
+
                 $created++;
             }
 
-            // Map CSV fields to object fields
+            // Map CSV fields to object fields (overwrite / enrich)
             if (!empty($name)) {
                 $customer->setName($name);
             }
@@ -139,15 +148,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setEngagementsource($engagementSource);
             }
 
-            // isMasterProfile: assume a Yes/No select or boolean field
-            if ($isMasterProfile !== '') {
-                // if your field is boolean:
-                // $customer->setIsMasterProfile(strtolower($isMasterProfile) === 'yes');
-                // if your field is select/string:
-                $customer->setIsMasterProfile($isMasterProfile);
-            }
-
-            // merge segments: existing + new
+            // merge segments: take old segments + new segment, unique
             $segments = (array)$customer->getSegments();
             if (!empty($segment)) {
                 $segments[] = $segment;
@@ -174,7 +175,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
 
         fclose($handle);
 
-        $this->writeInfo("Customer import finished. Created $created objects, updated $updated objects.");
+        $this->writeInfo("Customer import finished. Created $created master profiles, updated $updated master profiles.");
         return 0;
     }
 }
