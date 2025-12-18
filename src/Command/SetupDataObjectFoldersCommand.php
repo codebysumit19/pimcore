@@ -3,27 +3,36 @@
 namespace App\Command;
 
 use Pimcore\Console\AbstractCommand;
-use Pimcore\Model\DataObject;
-use Pimcore\Model\Element\Service as ElementService;
+use Pimcore\Model\DataObject\Service as ObjectService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'app:setup-dataobject-folders',
-    description: 'Create Customers, Dealers and Prospects data object folders under Home'
+    description: 'Create Customers, Dealers, Prospects and CustomerEvents data object folders under Home'
 )]
 class SetupDataObjectFoldersCommand extends AbstractCommand
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        foreach (['Customers', 'Dealers', 'Prospects', 'CustomerEvent'] as $name) {
-            $folder = new DataObject\Folder();
-            $folder->setKey(ElementService::getValidKey($name, 'object'));
-            $folder->setParentId(1); // Home (root) in Data Objects
-            $folder->save();
+        // List of folders you want under Home
+        $paths = [
+            '/Customers',
+            '/Dealers',
+            '/Prospects',
+            '/CustomerEvents',   // folder for CustomerEvent objects
+        ];
 
-            $this->writeInfo(sprintf('Folder "%s" created (or already exists).', $name));
+        foreach ($paths as $path) {
+            // This will create the folder if it does not exist, or return it if it already exists. [web:372][web:369]
+            $folder = ObjectService::createFolderByPath($path);
+
+            $this->writeInfo(sprintf(
+                'Folder "%s" is ready (ID: %d).',
+                $folder->getFullPath(),
+                $folder->getId()
+            ));
         }
 
         return 0;
