@@ -37,8 +37,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             return 1;
         }
 
-        // Expected header (9 columns):
-        // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
+        // Expected header:
+        // name,email,phone,dealer_id,region,territory,engagementsource,segment,isMasterProfile,last event date
         $header = fgetcsv($handle);
         if ($header === false) {
             $this->writeError('Empty CSV (no header row).');
@@ -52,8 +52,9 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
-            if (count($row) < 9) {
-                $this->writeError("Row $rowNumber has fewer than 9 columns, skipping.");
+            // CSV has 10 columns
+            if (count($row) < 10) {
+                $this->writeError("Row $rowNumber has fewer than 10 columns, skipping.");
                 continue;
             }
 
@@ -66,14 +67,16 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $territory,
                 $engagementSource,
                 $segment,
+                $isMasterProfileCsv, // "Yes" / "No" from CSV
                 $lastEventDate,
-            ] = $row;   // matches customers.csv [file:511]
+            ] = $row; // matches customers.csv [file:530]
 
-            $email    = trim((string)$email);
-            $phone    = trim((string)$phone);
-            $dealerId = trim((string)$dealerId);
+            $email            = trim((string)$email);
+            $phone            = trim((string)$phone);
+            $dealerId         = trim((string)$dealerId);
+            $isMasterProfileCsv = trim((string)$isMasterProfileCsv);
 
-            // ---------- Identity resolution (find master profile) ----------
+            // ---------- Identity resolution (find existing master profile) ----------
             $customer = null;
 
             // 1) match by email
@@ -100,8 +103,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-            // 4) if found but not a master profile, do NOT merge into it
-            // IsMasterProfile is a Select with values like "Yes"/"No"
+            // 4) if found but NOT a master profile, do NOT merge into it
+            // IsMasterProfile is a Select with values: Empty / Yes / No [image:1]
             if ($customer instanceof DataObject\Customer && $customer->getIsMasterProfile() !== 'Yes') {
                 $customer = null;
             }
@@ -119,8 +122,12 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setKey($key);
                 $customer->setPublished(true);
 
-                // mark as master profile
-                $customer->setIsMasterProfile('Yes');
+                // If CSV row says this is master, mark Yes; otherwise you can decide (here we default to Yes)
+                if ($isMasterProfileCsv !== '') {
+                    $customer->setIsMasterProfile($isMasterProfileCsv); // "Yes" or "No"
+                } else {
+                    $customer->setIsMasterProfile('Yes');
+                }
 
                 $created++;
             }
@@ -146,6 +153,11 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             }
             if (!empty($engagementSource)) {
                 $customer->setEngagementsource($engagementSource);
+            }
+
+            // isMasterProfile: keep in sync with CSV if provided
+            if ($isMasterProfileCsv !== '') {
+                $customer->setIsMasterProfile($isMasterProfileCsv); // Select value
             }
 
             // merge segments: take old segments + new segment, unique
@@ -175,7 +187,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
 
         fclose($handle);
 
-        $this->writeInfo("Customer import finished. Created $created master profiles, updated $updated master profiles.");
+        $this->writeInfo("Customer import finished. Created $created customers, updated $updated customers.");
         return 0;
     }
 }
