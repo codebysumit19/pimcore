@@ -45,11 +45,11 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
         $created   = 0;
         $updated   = 0;
         $enriched  = 0;
+        $skipped   = 0;
 
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
-            // always 10 columns
             $row = array_pad($row, 10, '');
 
             [
@@ -63,74 +63,72 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $segment,
                 $isMasterProfileCsv,
                 $lastEventDate,
-            ] = $row;  // [file:531]
+            ] = $row; // [file:531]
 
             $email             = trim((string)$email);
             $phone             = trim((string)$phone);
             $dealerId          = trim((string)$dealerId);
             $isMasterProfileCsv = trim((string)$isMasterProfileCsv); // "Yes" / "No"
 
-            // ---------- 1. Find existing master (if any) ----------
-            $customer = null;
-
-            // by email
-            if ($email !== '') {
-                $existing = DataObject\Customer::getByEmail($email, 1);
-                if ($existing instanceof DataObject\Customer && $existing->getIsMasterProfile() === 'Yes') {
-                    $customer = $existing;
-                }
-            }
-
-            // by phone
-            if (!$customer && $phone !== '') {
-                $existing = DataObject\Customer::getByPhone($phone, 1);
-                if ($existing instanceof DataObject\Customer && $existing->getIsMasterProfile() === 'Yes') {
-                    $customer = $existing;
-                }
-            }
-
-            // by dealer_id
-            if (!$customer && $dealerId !== '') {
-                $existing = DataObject\Customer::getByDealer_id($dealerId, 1);
-                if ($existing instanceof DataObject\Customer && $existing->getIsMasterProfile() === 'Yes') {
-                    $customer = $existing;
-                }
-            }
-
             $isMasterRow = ($isMasterProfileCsv === 'Yes');
 
-            // ---------- 2. Decide create/update/enrich ----------
-            if ($isMasterRow) {
-                // This row is master = Yes
-                if ($customer instanceof DataObject\Customer) {
-                    // update existing master
-                    $updated++;
-                } else {
-                    // create new master
-                    $customer = new DataObject\Customer();
-                    $customer->setParent($customersFolder);
+            // ---------- 1. Find any existing customer for this identity ----------
+            $customer = null;
 
-                    $key = ElementService::getValidKey('customer' . $rowNumber, 'object');
-                    $customer->setKey($key);
-                    $customer->setPublished(true);
+            if ($email !== '') {
+                $existing = DataObject\Customer::getByEmail($email, 1);
+                if ($existing instanceof DataObject\Customer) {
+                    $customer = $existing;
+                }
+            }
 
-                    $created++;
+            if (!$customer && $phone !== '') {
+                $existing = DataObject\Customer::getByPhone($phone, 1);
+                if ($existing instanceof DataObject\Customer) {
+                    $customer = $existing;
+                }
+            }
+
+            if (!$customer && $dealerId !== '') {
+                $existing = DataObject\Customer::getByDealer_id($dealerId, 1);
+                if ($existing instanceof DataObject\Customer) {
+                    $customer = $existing;
+                }
+            }
+
+            // ---------- 2. Decide what to do ----------
+            if (!$customer) {
+                // no customer yet for this identity
+                if (!$isMasterRow) {
+                    // fragment but no master exists → skip
+                    $skipped++;
+                    continue;
                 }
 
-                // ensure object marked as master
-                $customer->setIsMasterProfile('Yes');
+                // create first master for this identity
+                $customer = new DataObject\Customer();
+                $customer->setParent($customersFolder);
+
+                $key = ElementService::getValidKey('customer' . $rowNumber, 'object');
+                $customer->setKey($key);
+                $customer->setPublished(true);
+
+                $created++;
             } else {
-                // Fragment row (No) → only enrich if master exists, never create
-                if (!$customer instanceof DataObject\Customer) {
-                    // no master yet for this identity → ignore this fragment
-                    continue;
+                // customer exists → merge into it
+                if ($customer->getIsMasterProfile() !== 'Yes' && $isMasterRow) {
+                    // upgrade existing to master if this row is master
+                    $customer->setIsMasterProfile('Yes');
                 }
                 $enriched++;
             }
 
-            // ---------- 3. Merge data into the master object ----------
-            // For both master rows and fragment rows we enrich the master
+            // ensure master flag for Yes rows
+            if ($isMasterRow) {
+                $customer->setIsMasterProfile('Yes');
+            }
 
+            // ---------- 3. Merge fields ----------
             if (!empty($name)) {
                 $customer->setName($name);
             }
@@ -153,7 +151,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setEngagementsource($engagementSource);
             }
 
-            // merge segments from all rows (Yes + No)
+            // merge segments from all rows
             $segments = (array)$customer->getSegments();
             if (!empty($segment)) {
                 $segments[] = $segment;
@@ -161,7 +159,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             $segments = array_values(array_unique(array_filter(array_map('trim', $segments))));
             $customer->setSegments($segments);
 
-            // last event date: keep latest across all rows
+            // last event date: keep latest
             if (!empty($lastEventDate)) {
                 try {
                     $newDate = Carbon::parse($lastEventDate);
@@ -180,8 +178,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
         fclose($handle);
 
         $this->writeInfo(
-            "Customer import finished. Created $created master customers, ".
-            "updated $updated masters, enriched $enriched fragment rows."
+            "Customer import finished. Created $created masters, enriched $enriched rows, skipped $skipped rows without master."
         );
         return 0;
     }
