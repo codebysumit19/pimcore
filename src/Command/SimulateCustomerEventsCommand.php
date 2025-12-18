@@ -36,7 +36,7 @@ class SimulateCustomerEventsCommand extends AbstractCommand
                 continue;
             }
 
-            for ($i = 0; $i < 3; $i++) {
+            for ($i = 0; $i < 1; $i++) {
                 $type = $types[array_rand($types)];
 
                 $event = new Events();
