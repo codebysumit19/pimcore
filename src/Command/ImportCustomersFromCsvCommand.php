@@ -38,7 +38,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
         }
 
         // Expected header:
-        // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
+        // name,email,phone,dealer_id,region,territory,engagementsource,segment,isMasterProfile,last event date
         $header = fgetcsv($handle);
         if ($header === false) {
             $this->writeError('Empty CSV (no header row).');
@@ -52,8 +52,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
-            if (count($row) < 9) {
-                $this->writeError("Row $rowNumber has fewer than 9 columns, skipping.");
+            if (count($row) < 10) {
+                $this->writeError("Row $rowNumber has fewer than 10 columns, skipping.");
                 continue;
             }
 
@@ -66,16 +66,19 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $territory,
                 $engagementSource,
                 $segment,
+                $isMasterProfile,
                 $lastEventDate,
-            ] = $row;
+            ] = $row;   // matches CSV header [file:511]
 
-            $email    = trim((string)$email);
-            $phone    = trim((string)$phone);
-            $dealerId = trim((string)$dealerId);
+            $email          = trim((string)$email);
+            $phone          = trim((string)$phone);
+            $dealerId       = trim((string)$dealerId);
+            $isMasterProfile = trim((string)$isMasterProfile);
 
             // ---------- Identity resolution ----------
-            // 1) try match by email (primary)
             $customer = null;
+
+            // 1) match by email
             if ($email !== '') {
                 $existing = DataObject\Customer::getByEmail($email, 1);
                 if ($existing instanceof DataObject\Customer) {
@@ -83,7 +86,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-            // 2) if not found and phone present, try match by phone
+            // 2) by phone
             if (!$customer && $phone !== '') {
                 $existing = DataObject\Customer::getByPhone($phone, 1);
                 if ($existing instanceof DataObject\Customer) {
@@ -91,7 +94,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-            // 3) if still not found and dealer_id present, match by dealer_id (B2B)
+            // 3) by dealer_id
             if (!$customer && $dealerId !== '') {
                 $existing = DataObject\Customer::getByDealer_id($dealerId, 1);
                 if ($existing instanceof DataObject\Customer) {
@@ -101,10 +104,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
 
             // ---------- Create or update ----------
             if ($customer instanceof DataObject\Customer) {
-                // existing profile → UPDATE
                 $updated++;
             } else {
-                // new profile → CREATE
                 $customer = new DataObject\Customer();
                 $customer->setParent($customersFolder);
 
@@ -115,7 +116,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $created++;
             }
 
-            // Map CSV fields to object fields (overwrite / enrich)
+            // Map CSV fields to object fields
             if (!empty($name)) {
                 $customer->setName($name);
             }
@@ -138,7 +139,15 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setEngagementsource($engagementSource);
             }
 
-            // merge segments: take old segments + new segment, unique
+            // isMasterProfile: assume a Yes/No select or boolean field
+            if ($isMasterProfile !== '') {
+                // if your field is boolean:
+                // $customer->setIsMasterProfile(strtolower($isMasterProfile) === 'yes');
+                // if your field is select/string:
+                $customer->setIsMasterProfile($isMasterProfile);
+            }
+
+            // merge segments: existing + new
             $segments = (array)$customer->getSegments();
             if (!empty($segment)) {
                 $segments[] = $segment;
