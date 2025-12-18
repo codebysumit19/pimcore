@@ -2,6 +2,7 @@
 
 namespace App\Command;
 
+use Carbon\Carbon; // for eventTime
 use Pimcore\Console\AbstractCommand;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\Customer;
@@ -11,7 +12,6 @@ use Pimcore\Model\Element\Service as ElementService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Carbon\Carbon; // <-- add this
 
 #[AsCommand(
     name: 'app:simulate-events',
@@ -21,12 +21,15 @@ class SimulateCustomerEventsCommand extends AbstractCommand
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        // Create /CustomerEvents folder if it does not exist
         /** @var DataObject\Folder $eventsFolder */
-        $eventsFolder = ObjectService::createFolderByPath('/CustomerEvents');
+        $eventsFolder = ObjectService::createFolderByPath('/CustomerEvents'); // [web:379][web:191]
 
+        // Load some customers
         $list = new DataObject\Customer\Listing();
         $list->setLimit(100);
 
+        // Possible event types
         $types = ['ProductView', 'CatalogDownload', 'PriceRequest', 'DealerInquiry'];
 
         $created = 0;
@@ -36,31 +39,30 @@ class SimulateCustomerEventsCommand extends AbstractCommand
                 continue;
             }
 
+            // create 3 random events per customer
             for ($i = 0; $i < 3; $i++) {
                 $type = $types[array_rand($types)];
 
                 $event = new CustomerEvent();
                 $event->setParent($eventsFolder);
-                $event->setKey(ElementService::getValidKey(
-                    'event_' . $customer->getId() . '_' . uniqid(),
-                    'object'
-                ));
+                $event->setKey(
+                    ElementService::getValidKey(
+                        'event_' . $customer->getId() . '_' . uniqid(),
+                        'object'
+                    )
+                );
                 $event->setPublished(true);
 
-                $event->setCustomer($customer);
-                $event->setEventType($type);
+                // required fields on CustomerEvent
+                $event->setCustomer($customer);      // relation field "customer"
+                $event->setEventType($type);         // select field "eventType"
 
-                // Use Carbon here (random date within last 30 days)
+                // Date & time field "eventTime" expects Carbon
                 $daysAgo = rand(0, 30);
-                $event->setEventTime(Carbon::now()->subDays($daysAgo)); // <-- FIX [web:406][web:408]
+                $event->setEventTime(Carbon::now()->subDays($daysAgo)); // [web:406][web:407]
 
-                if ($type === 'ProductView') {
-                    $event->setProductId('P' . rand(100, 999));
-                } elseif ($type === 'DealerInquiry' || $type === 'PriceRequest') {
-                    $event->setDealerId($customer->getDealer_id());
-                }
-
-                $event->setMeta('Mock event generated for demo');
+                // Optional description / note
+                $event->setMeta('Mock event generated for demo'); // input/textarea field "meta"
 
                 $event->save();
                 $created++;
