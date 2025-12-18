@@ -6,7 +6,7 @@ use Carbon\Carbon;
 use Pimcore\Console\AbstractCommand;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\Customer;
-use Pimcore\Model\DataObject\Events;              // <-- renamed
+use Pimcore\Model\DataObject\Events;
 use Pimcore\Model\DataObject\Service as ObjectService;
 use Pimcore\Model\Element\Service as ElementService;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -39,7 +39,7 @@ class SimulateCustomerEventsCommand extends AbstractCommand
             for ($i = 0; $i < 3; $i++) {
                 $type = $types[array_rand($types)];
 
-                $event = new Events();   // <-- use Events class
+                $event = new Events();
                 $event->setParent($eventsFolder);
                 $event->setKey(
                     ElementService::getValidKey(
@@ -49,17 +49,17 @@ class SimulateCustomerEventsCommand extends AbstractCommand
                 );
                 $event->setPublished(true);
 
-                // relation field (make sure field is still named "customer")
+                // many-to-one relation field "customer"
                 $event->setCustomer($customer);
 
-                // select field
+                // select field "eventType"
                 $event->setEventType($type);
 
-                // datetime field
-                $event->setEventTime(Carbon::now()->subDays(rand(0, 30)));
+                // description field (optional)
+                $event->setDescription('Mock ' . $type . ' event');
 
-                // text field
-                $event->setMeta('Mock event generated for demo');
+                // date & time field "eventTime"
+                $event->setEventTime(Carbon::now()->subDays(rand(0, 30)));
 
                 $event->save();
                 $created++;
