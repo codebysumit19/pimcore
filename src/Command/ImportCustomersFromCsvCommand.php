@@ -1,6 +1,8 @@
 <?php
 
+
 namespace App\Command;
+
 
 use Carbon\Carbon;
 use Pimcore\Console\AbstractCommand;
@@ -11,46 +13,60 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
+
 #[AsCommand(
     name: 'app:import-customers',
-    description: 'Import customers with identity resolution and master-profile enrichment'
+    description: 'Import customers from CSV into /Customers data object folder with identity resolution'
 )]
 class ImportCustomersFromCsvCommand extends AbstractCommand
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
+        // 1) CSV location (relative to project root)
         $csvPath = PIMCORE_PROJECT_ROOT . '/var/import/customers.csv';
+
 
         if (!is_readable($csvPath)) {
             $this->writeError('CSV not readable: ' . $csvPath);
             return 1;
         }
 
+
+        // 2) Ensure /Customers folder exists and get it
         /** @var DataObject\Folder $customersFolder */
         $customersFolder = ObjectService::createFolderByPath('/Customers');
 
+
+        // 3) Open CSV
         if (($handle = fopen($csvPath, 'r')) === false) {
             $this->writeError('Cannot open CSV file');
             return 1;
         }
 
-        // name,email,phone,dealer_id,region,territory,engagementsource,segment,isMasterProfile,last event date [file:531]
+
+        // Expected header:
+        // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
         $header = fgetcsv($handle);
         if ($header === false) {
             $this->writeError('Empty CSV (no header row).');
             return 1;
         }
 
+
         $rowNumber = 0;
         $created   = 0;
-        $enriched  = 0;
-        $skipped   = 0;
+        $updated   = 0;
+
 
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
-            // always 10 columns
-            $row = array_pad($row, 10, '');
+
+            if (count($row) < 9) {
+                $this->writeError("Row $rowNumber has fewer than 9 columns, skipping.");
+                continue;
+            }
+
 
             [
                 $name,
@@ -61,20 +77,18 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $territory,
                 $engagementSource,
                 $segment,
-                $isMasterProfileCsv,
                 $lastEventDate,
             ] = $row;
 
-            $email             = trim((string)$email);
-            $phone             = trim((string)$phone);
-            $dealerId          = trim((string)$dealerId);
-            $isMasterProfileCsv = trim((string)$isMasterProfileCsv); // "Yes" / "No"
 
-            $isMasterRow = ($isMasterProfileCsv === 'Yes');
+            $email    = trim((string)$email);
+            $phone    = trim((string)$phone);
+            $dealerId = trim((string)$dealerId);
 
-            // ---------- 1. Find any existing customer for this identity ----------
+
+            // ---------- Identity resolution ----------
+            // 1) try match by email (primary)
             $customer = null;
-
             if ($email !== '') {
                 $existing = DataObject\Customer::getByEmail($email, 1);
                 if ($existing instanceof DataObject\Customer) {
@@ -82,6 +96,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
+
+            // 2) if not found and phone present, try match by phone
             if (!$customer && $phone !== '') {
                 $existing = DataObject\Customer::getByPhone($phone, 1);
                 if ($existing instanceof DataObject\Customer) {
@@ -89,6 +105,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
+
+            // 3) if still not found and dealer_id present, match by dealer_id (B2B)
             if (!$customer && $dealerId !== '') {
                 $existing = DataObject\Customer::getByDealer_id($dealerId, 1);
                 if ($existing instanceof DataObject\Customer) {
@@ -96,37 +114,27 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-            // ---------- 2. Create master if needed, or enrich ----------
-            if (!$customer) {
-                // No customer yet for this identity
-                if (!$isMasterRow) {
-                    // fragment with no master yet → skip
-                    $skipped++;
-                    continue;
-                }
 
-                // first master row for this identity → create
+            // ---------- Create or update ----------
+            if ($customer instanceof DataObject\Customer) {
+                // existing profile → UPDATE
+                $updated++;
+            } else {
+                // new profile → CREATE
                 $customer = new DataObject\Customer();
                 $customer->setParent($customersFolder);
+
 
                 $key = ElementService::getValidKey('customer' . $rowNumber, 'object');
                 $customer->setKey($key);
                 $customer->setPublished(true);
 
+
                 $created++;
-            } else {
-                // Customer already exists for this identity → always merge
-                $enriched++;
             }
 
-            // Set/keep master flag based on CSV
-            if ($isMasterRow) {
-                $customer->setIsMasterProfile('Yes');
-            } elseif ($customer->getIsMasterProfile() !== 'Yes') {
-                $customer->setIsMasterProfile('No');
-            }
 
-            // ---------- 3. Merge data into customer ----------
+            // Map CSV fields to object fields (overwrite / enrich)
             if (!empty($name)) {
                 $customer->setName($name);
             }
@@ -149,7 +157,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setEngagementsource($engagementSource);
             }
 
-            // merge segments from all rows (Yes + No)
+
+            // merge segments: take old segments + new segment, unique
             $segments = (array)$customer->getSegments();
             if (!empty($segment)) {
                 $segments[] = $segment;
@@ -157,7 +166,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             $segments = array_values(array_unique(array_filter(array_map('trim', $segments))));
             $customer->setSegments($segments);
 
-            // last event date: keep latest across all rows
+
+            // last event date: keep latest
             if (!empty($lastEventDate)) {
                 try {
                     $newDate = Carbon::parse($lastEventDate);
@@ -170,15 +180,16 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
+
+            // Save (create or update)
             $customer->save();
         }
 
+
         fclose($handle);
 
-        $this->writeInfo(
-            "Customer import finished. Created $created master customers, ".
-            "enriched $enriched rows, skipped $skipped rows without master."
-        );
+
+        $this->writeInfo("Customer import finished. Created $created objects, updated $updated objects.");
         return 0;
     }
 }
