@@ -53,10 +53,11 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             $rowNumber++;
 
             // CSV has 10 columns
-            if (count($row) < 10) {
-                $this->writeError("Row $rowNumber has fewer than 10 columns, skipping.");
-                continue;
-            }
+            // if (count($row) < 10) {
+            //     $this->writeError("Row $rowNumber has fewer than 10 columns, skipping.");
+            //     continue;
+            // }
+            $row = array_pad($row, 10, '');
 
             [
                 $name,
