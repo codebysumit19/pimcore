@@ -19,7 +19,6 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // 1) CSV location (relative to project root)
         $csvPath = PIMCORE_PROJECT_ROOT . '/var/import/customers.csv';
 
         if (!is_readable($csvPath)) {
@@ -27,18 +26,15 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             return 1;
         }
 
-        // 2) Ensure /Customers folder exists and get it
         /** @var DataObject\Folder $customersFolder */
         $customersFolder = ObjectService::createFolderByPath('/Customers');
 
-        // 3) Open CSV
         if (($handle = fopen($csvPath, 'r')) === false) {
             $this->writeError('Cannot open CSV file');
             return 1;
         }
 
-        // Expected header:
-        // name,email,phone,dealer_id,region,territory,engagementsource,segment,isMasterProfile,last event date
+        // Header: name,email,phone,dealer_id,region,territory,engagementsource,segment,isMasterProfile,last event date
         $header = fgetcsv($handle);
         if ($header === false) {
             $this->writeError('Empty CSV (no header row).');
@@ -48,15 +44,12 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
         $rowNumber = 0;
         $created   = 0;
         $updated   = 0;
+        $skipped   = 0;
 
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
-            // CSV has 10 columns
-            // if (count($row) < 10) {
-            //     $this->writeError("Row $rowNumber has fewer than 10 columns, skipping.");
-            //     continue;
-            // }
+            // always have 10 columns, fill missing with ''
             $row = array_pad($row, 10, '');
 
             [
@@ -68,19 +61,19 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $territory,
                 $engagementSource,
                 $segment,
-                $isMasterProfileCsv, // "Yes" / "No" from CSV
+                $isMasterProfileCsv, // Yes / No
                 $lastEventDate,
-            ] = $row; // matches customers.csv [file:530]
+            ] = $row; // [file:531]
 
             $email            = trim((string)$email);
             $phone            = trim((string)$phone);
             $dealerId         = trim((string)$dealerId);
             $isMasterProfileCsv = trim((string)$isMasterProfileCsv);
 
-            // ---------- Identity resolution (find existing master profile) ----------
+            // ---------- Identity resolution ----------
             $customer = null;
 
-            // 1) match by email
+            // 1) by email
             if ($email !== '') {
                 $existing = DataObject\Customer::getByEmail($email, 1);
                 if ($existing instanceof DataObject\Customer) {
@@ -104,18 +97,27 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-            // 4) if found but NOT a master profile, do NOT merge into it
-            // IsMasterProfile is a Select with values: Empty / Yes / No [image:1]
+            // ---------- Master profile rule ----------
+            // If this CSV row is NOT marked as master (No/Empty),
+            // do NOT create/update a customer; treat it as a fragment only.
+            if (strtolower($isMasterProfileCsv) !== 'yes') {
+                $skipped++;
+                continue;
+            }
+
+            // At this point, the row is master = Yes.
+            // If we found a customer and it is master, we merge.
+            // If found but not master, we ignore that one and create a new master.
             if ($customer instanceof DataObject\Customer && $customer->getIsMasterProfile() !== 'Yes') {
                 $customer = null;
             }
 
             // ---------- Create or update ----------
             if ($customer instanceof DataObject\Customer) {
-                // existing master profile → UPDATE / merge
+                // existing master → update
                 $updated++;
             } else {
-                // new master profile → CREATE
+                // new master → create
                 $customer = new DataObject\Customer();
                 $customer->setParent($customersFolder);
 
@@ -123,17 +125,13 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setKey($key);
                 $customer->setPublished(true);
 
-                // If CSV row says this is master, mark Yes; otherwise you can decide (here we default to Yes)
-                if ($isMasterProfileCsv !== '') {
-                    $customer->setIsMasterProfile($isMasterProfileCsv); // "Yes" or "No"
-                } else {
-                    $customer->setIsMasterProfile('Yes');
-                }
-
                 $created++;
             }
 
-            // Map CSV fields to object fields (overwrite / enrich)
+            // mark as master in object
+            $customer->setIsMasterProfile('Yes');
+
+            // ---------- Map fields ----------
             if (!empty($name)) {
                 $customer->setName($name);
             }
@@ -156,12 +154,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setEngagementsource($engagementSource);
             }
 
-            // isMasterProfile: keep in sync with CSV if provided
-            if ($isMasterProfileCsv !== '') {
-                $customer->setIsMasterProfile($isMasterProfileCsv); // Select value
-            }
-
-            // merge segments: take old segments + new segment, unique
+            // merge segments
             $segments = (array)$customer->getSegments();
             if (!empty($segment)) {
                 $segments[] = $segment;
@@ -182,13 +175,12 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-            // Save (create or update)
             $customer->save();
         }
 
         fclose($handle);
 
-        $this->writeInfo("Customer import finished. Created $created customers, updated $updated customers.");
+        $this->writeInfo("Customer import finished. Created $created master customers, updated $updated master customers, skipped $skipped fragment rows.");
         return 0;
     }
 }
