@@ -158,13 +158,15 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             }
 
 
-            // merge segments: take old segments + new segment, unique
-            $segments = (array)$customer->getSegments();
-            if (!empty($segment)) {
-                $segments[] = $segment;
-            }
-            $segments = array_values(array_unique(array_filter(array_map('trim', $segments))));
-            $customer->setSegments($segments);
+            // overwrite segments from CSV, do NOT merge
+if (!empty($segment)) {
+    // if your segments field is multiselect but CSV has a single value
+    $customer->setSegments([$segment]);
+} else {
+    // if CSV is empty, you can either clear or keep old value.
+    // To clear:
+    // $customer->setSegments([]);
+}
 
 
             // last event date: keep latest
