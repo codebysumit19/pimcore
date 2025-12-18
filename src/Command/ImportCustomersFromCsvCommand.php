@@ -34,7 +34,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             return 1;
         }
 
-        // name,email,phone,dealer_id,region,territory,engagementsource,segment,isMasterProfile,last event date
+        // name,email,phone,dealer_id,region,territory,engagementsource,segment,isMasterProfile,last event date [file:531]
         $header = fgetcsv($handle);
         if ($header === false) {
             $this->writeError('Empty CSV (no header row).');
@@ -43,13 +43,13 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
 
         $rowNumber = 0;
         $created   = 0;
-        $updated   = 0;
         $enriched  = 0;
         $skipped   = 0;
 
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
+            // always 10 columns
             $row = array_pad($row, 10, '');
 
             [
@@ -63,7 +63,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $segment,
                 $isMasterProfileCsv,
                 $lastEventDate,
-            ] = $row; // [file:531]
+            ] = $row;
 
             $email             = trim((string)$email);
             $phone             = trim((string)$phone);
@@ -96,16 +96,16 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-            // ---------- 2. Decide what to do ----------
+            // ---------- 2. Create master if needed, or enrich ----------
             if (!$customer) {
-                // no customer yet for this identity
+                // No customer yet for this identity
                 if (!$isMasterRow) {
-                    // fragment but no master exists → skip
+                    // fragment with no master yet → skip
                     $skipped++;
                     continue;
                 }
 
-                // create first master for this identity
+                // first master row for this identity → create
                 $customer = new DataObject\Customer();
                 $customer->setParent($customersFolder);
 
@@ -115,20 +115,18 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
 
                 $created++;
             } else {
-                // customer exists → merge into it
-                if ($customer->getIsMasterProfile() !== 'Yes' && $isMasterRow) {
-                    // upgrade existing to master if this row is master
-                    $customer->setIsMasterProfile('Yes');
-                }
+                // Customer already exists for this identity → always merge
                 $enriched++;
             }
 
-            // ensure master flag for Yes rows
+            // Set/keep master flag based on CSV
             if ($isMasterRow) {
                 $customer->setIsMasterProfile('Yes');
+            } elseif ($customer->getIsMasterProfile() !== 'Yes') {
+                $customer->setIsMasterProfile('No');
             }
 
-            // ---------- 3. Merge fields ----------
+            // ---------- 3. Merge data into customer ----------
             if (!empty($name)) {
                 $customer->setName($name);
             }
@@ -151,7 +149,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setEngagementsource($engagementSource);
             }
 
-            // merge segments from all rows
+            // merge segments from all rows (Yes + No)
             $segments = (array)$customer->getSegments();
             if (!empty($segment)) {
                 $segments[] = $segment;
@@ -159,7 +157,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             $segments = array_values(array_unique(array_filter(array_map('trim', $segments))));
             $customer->setSegments($segments);
 
-            // last event date: keep latest
+            // last event date: keep latest across all rows
             if (!empty($lastEventDate)) {
                 try {
                     $newDate = Carbon::parse($lastEventDate);
@@ -178,7 +176,8 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
         fclose($handle);
 
         $this->writeInfo(
-            "Customer import finished. Created $created masters, enriched $enriched rows, skipped $skipped rows without master."
+            "Customer import finished. Created $created master customers, ".
+            "enriched $enriched rows, skipped $skipped rows without master."
         );
         return 0;
     }
