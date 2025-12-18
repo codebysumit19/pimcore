@@ -11,6 +11,7 @@ use Pimcore\Model\Element\Service as ElementService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Carbon\Carbon; // <-- add this
 
 #[AsCommand(
     name: 'app:simulate-events',
@@ -20,13 +21,11 @@ class SimulateCustomerEventsCommand extends AbstractCommand
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // Ensure /CustomerEvents folder exists
         /** @var DataObject\Folder $eventsFolder */
         $eventsFolder = ObjectService::createFolderByPath('/CustomerEvents');
 
-        // Load some customers
         $list = new DataObject\Customer\Listing();
-        $list->setLimit(100); // simulate for first 100 customers
+        $list->setLimit(100);
 
         $types = ['ProductView', 'CatalogDownload', 'PriceRequest', 'DealerInquiry'];
 
@@ -37,7 +36,6 @@ class SimulateCustomerEventsCommand extends AbstractCommand
                 continue;
             }
 
-            // create 3 random events per customer
             for ($i = 0; $i < 3; $i++) {
                 $type = $types[array_rand($types)];
 
@@ -50,11 +48,12 @@ class SimulateCustomerEventsCommand extends AbstractCommand
                 $event->setPublished(true);
 
                 $event->setCustomer($customer);
-                // use eventType field instead of type
                 $event->setEventType($type);
-                $event->setEventTime(new \DateTime('-' . rand(0, 30) . ' days'));
 
-                // Optional context
+                // Use Carbon here (random date within last 30 days)
+                $daysAgo = rand(0, 30);
+                $event->setEventTime(Carbon::now()->subDays($daysAgo)); // <-- FIX [web:406][web:408]
+
                 if ($type === 'ProductView') {
                     $event->setProductId('P' . rand(100, 999));
                 } elseif ($type === 'DealerInquiry' || $type === 'PriceRequest') {
