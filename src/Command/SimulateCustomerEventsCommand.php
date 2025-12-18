@@ -2,7 +2,7 @@
 
 namespace App\Command;
 
-use Carbon\Carbon; // for eventTime
+use Carbon\Carbon;
 use Pimcore\Console\AbstractCommand;
 use Pimcore\Model\DataObject;
 use Pimcore\Model\DataObject\Customer;
@@ -21,25 +21,22 @@ class SimulateCustomerEventsCommand extends AbstractCommand
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // Create /CustomerEvents folder if it does not exist
         /** @var DataObject\Folder $eventsFolder */
-        $eventsFolder = ObjectService::createFolderByPath('/CustomerEvents'); // [web:379][web:191]
+        $eventsFolder = ObjectService::createFolderByPath('/CustomerEvents');
 
-        // Load some customers
         $list = new DataObject\Customer\Listing();
         $list->setLimit(100);
 
-        // Possible event types
         $types = ['ProductView', 'CatalogDownload', 'PriceRequest', 'DealerInquiry'];
 
         $created = 0;
 
         foreach ($list as $customer) {
-            if (!$customer instanceof Customer) {
+            if (!$customer instanceof Customer || !$customer->getId()) {
+                // skip if not a persisted Customer object
                 continue;
             }
 
-            // create 3 random events per customer
             for ($i = 0; $i < 3; $i++) {
                 $type = $types[array_rand($types)];
 
@@ -53,16 +50,17 @@ class SimulateCustomerEventsCommand extends AbstractCommand
                 );
                 $event->setPublished(true);
 
-                // required fields on CustomerEvent
-                $event->setCustomer($customer);      // relation field "customer"
-                $event->setEventType($type);         // select field "eventType"
+                // many-to-one relation field "customer"
+                $event->setCustomer($customer);
 
-                // Date & time field "eventTime" expects Carbon
-                $daysAgo = rand(0, 30);
-                $event->setEventTime(Carbon::now()->subDays($daysAgo)); // [web:406][web:407]
+                // select field "eventType"
+                $event->setEventType($type);
 
-                // Optional description / note
-                $event->setMeta('Mock event generated for demo'); // input/textarea field "meta"
+                // date & time field "eventTime" (Carbon)
+                $event->setEventTime(Carbon::now()->subDays(rand(0, 30)));
+
+                // text field "meta"
+                $event->setMeta('Mock event generated for demo');
 
                 $event->save();
                 $created++;
