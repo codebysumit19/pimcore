@@ -25,7 +25,7 @@ class SimulateCustomerEventsCommand extends AbstractCommand
         $eventsFolder = ObjectService::createFolderByPath('/CustomerEvents');
 
         $list = new DataObject\Customer\Listing();
-        $list->setLimit(500);
+        $list->setLimit(10);
 
         $types = ['ProductView', 'CatalogDownload', 'PriceRequest', 'DealerInquiry'];
 

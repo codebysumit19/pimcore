@@ -67,6 +67,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 continue;
             }
 
+//Uses list assignment to map CSV columns into individual variables.
 
             [
                 $name,
@@ -80,6 +81,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $lastEventDate,
             ] = $row;
 
+//Normalizes identifiers by trimming whitespace and casting to string.
 
             $email    = trim((string)$email);
             $phone    = trim((string)$phone);
@@ -159,14 +161,14 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
 
 
             // overwrite segments from CSV, do NOT merge
-if (!empty($segment)) {
-    // if your segments field is multiselect but CSV has a single value
-    $customer->setSegments([$segment]);
-} else {
-    // if CSV is empty, you can either clear or keep old value.
-    // To clear:
-    // $customer->setSegments([]);
-}
+            if (!empty($segment)) {
+                // if your segments field is multiselect but CSV has a single value
+                $customer->setSegments([$segment]);
+            } else {
+                // if CSV is empty, you can either clear or keep old value.
+                // To clear:
+                // $customer->setSegments([]);
+            }
 
 
             // last event date: keep latest
