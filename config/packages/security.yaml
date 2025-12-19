@@ -8,7 +8,7 @@ security:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
             security: false
 
-        # API firewall for /api/*
+        # API firewall for any /api/* route
         api:
             pattern: ^/api
             stateless: true
@@ -26,7 +26,7 @@ security:
         pimcore_admin: '%pimcore_admin_bundle.firewall_settings%'
 
     access_control:
-        # Protect all /api/* routes: require a logged-in Pimcore user
+        # Protect all API routes with Pimcore users
         - { path: ^/api, roles: ROLE_PIMCORE_USER }
 
         # Pimcore admin ACL  // DO NOT CHANGE!
@@ -40,4 +40,5 @@ security:
         - { path: ^/asset/webdav, roles: ROLE_PIMCORE_USER }
 
     role_hierarchy:
+        # Pimcore admin  // DO NOT CHANGE!
         ROLE_PIMCORE_ADMIN: [ROLE_PIMCORE_USER]
