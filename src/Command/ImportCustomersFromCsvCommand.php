@@ -106,7 +106,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             // Email = primary identifier
             if ($email !== '') {
                 $list = DataObject\Customer::getByEmail($email, [
-                    'limit'  => 50,
+                    'limit'  => 500,
                     'offset' => 0,
                 ]);
                 foreach ($list as $item) {
@@ -117,7 +117,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             // Phone = secondary identifier
             if ($phone !== '') {
                 $list = DataObject\Customer::getByPhone($phone, [
-                    'limit'  => 50,
+                    'limit'  => 500,
                     'offset' => 0,
                 ]);
                 foreach ($list as $item) {
@@ -128,7 +128,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             // DealerID = B2B match rule
             if ($dealerId !== '') {
                 $list = DataObject\Customer::getByDealer_id($dealerId, [
-                    'limit'  => 50,
+                    'limit'  => 500,
                     'offset' => 0,
                 ]);
                 foreach ($list as $item) {
