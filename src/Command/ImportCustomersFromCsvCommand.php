@@ -41,7 +41,6 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             return 1;
         }
 
-        // put the pointer back to start so fgetcsv can read from the beginning
         rewind($handle);
 
         $delimiter = ',';
@@ -69,9 +68,10 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             $colCount = count($row);
             $this->writeInfo("Row $rowNumber has $colCount columns");
 
-            // if there are less than 10 columns, pad with empty strings to avoid undefined offsets
-            if ($colCount < 10) {
-                $row = array_pad($row, 10, '');
+            // your cleaned CSV: name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
+            if ($colCount < 9) {
+                $this->writeError("Row $rowNumber has fewer than 9 columns, skipping.");
+                continue;
             }
 
             [
@@ -84,11 +84,12 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $engagementSource,
                 $segment,
                 $lastEventDate,
-                $isMasterProfile,
-            ] = $row;
+            ] = array_slice($row, 0, 9);
 
             // Normalize
             $name             = trim((string)$name);
+            // remove trailing space + number from name, e.g. "Priya Kumar 1" -> "Priya Kumar"
+            $name             = preg_replace('/\s+\d+$/', '', $name);
             $email            = trim((string)$email);
             $phone            = trim((string)$phone);
             $dealerId         = trim((string)$dealerId);
@@ -97,7 +98,6 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             $engagementSource = trim((string)$engagementSource);
             $segment          = trim((string)$segment);
             $lastEventDate    = trim((string)$lastEventDate);
-            $isMasterProfile  = trim((string)$isMasterProfile);
 
             // --------- FIND / MERGE LOGIC ---------
             /** @var DataObject\Customer[] $candidateProfiles */
@@ -159,6 +159,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                             continue;
                         }
 
+                        // keep earliest creationDate
                         if ($other->getCreationDate() < $customer->getCreationDate()) {
                             $customer->setCreationDate($other->getCreationDate());
                         }
@@ -212,9 +213,6 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                     $this->writeError("Row $rowNumber: invalid date '$lastEventDate', skipping date.");
                 }
             }
-
-            // optional:
-            // $customer->setIsMasterProfile($isMasterProfile === 'Yes');
 
             $customer->save();
         }
