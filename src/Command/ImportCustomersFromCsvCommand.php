@@ -34,23 +34,44 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             return 1;
         }
 
-        // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date,isMasterProfile
-        $header = fgetcsv($handle);
-        if ($header === false) {
+        // --- Detect delimiter from header line (comma or semicolon) ---
+        $firstLine = fgets($handle);
+        if ($firstLine === false) {
             $this->writeError('Empty CSV (no header row).');
             return 1;
         }
+
+        // put the pointer back to start so fgetcsv can read from the beginning
+        rewind($handle);
+
+        $delimiter = ',';
+        if (substr_count($firstLine, ';') > substr_count($firstLine, ',')) {
+            $delimiter = ';';
+        }
+
+        $this->writeInfo("Detected CSV delimiter: '{$delimiter}'");
+
+        // Read header with chosen delimiter
+        $header = fgetcsv($handle, 0, $delimiter);
+        if ($header === false) {
+            $this->writeError('Could not read header row.');
+            return 1;
+        }
+
+        $this->writeInfo('Header columns: ' . implode(' | ', $header) . ' (count: ' . count($header) . ')');
 
         $rowNumber = 0;
         $created   = 0;
         $updated   = 0;
 
-        while (($row = fgetcsv($handle)) !== false) {
+        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
             $rowNumber++;
+            $colCount = count($row);
+            $this->writeInfo("Row $rowNumber has $colCount columns");
 
-            if (count($row) < 10) {
-                $this->writeError("Row $rowNumber has fewer than 10 columns, skipping.");
-                continue;
+            // if there are less than 10 columns, pad with empty strings to avoid undefined offsets
+            if ($colCount < 10) {
+                $row = array_pad($row, 10, '');
             }
 
             [
@@ -67,19 +88,18 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             ] = $row;
 
             // Normalize
-            $name            = trim((string)$name);
-            $email           = trim((string)$email);
-            $phone           = trim((string)$phone);
-            $dealerId        = trim((string)$dealerId);
-            $region          = trim((string)$region);
-            $territory       = trim((string)$territory);
+            $name             = trim((string)$name);
+            $email            = trim((string)$email);
+            $phone            = trim((string)$phone);
+            $dealerId         = trim((string)$dealerId);
+            $region           = trim((string)$region);
+            $territory        = trim((string)$territory);
             $engagementSource = trim((string)$engagementSource);
-            $segment         = trim((string)$segment);
-            $lastEventDate   = trim((string)$lastEventDate);
-            $isMasterProfile = trim((string)$isMasterProfile); // "Yes"/"No"
+            $segment          = trim((string)$segment);
+            $lastEventDate    = trim((string)$lastEventDate);
+            $isMasterProfile  = trim((string)$isMasterProfile);
 
             // --------- FIND / MERGE LOGIC ---------
-            // collect all possible matches (email, phone, dealerId)
             /** @var DataObject\Customer[] $candidateProfiles */
             $candidateProfiles = [];
 
@@ -134,19 +154,17 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                     // MULTIPLE matches → choose master & merge
                     $customer = $this->pickMasterProfile($candidateProfiles);
 
-                    // merge data from other profiles into master (simple example)
                     foreach ($candidateProfiles as $other) {
                         if ($other->getId() === $customer->getId()) {
                             continue;
                         }
 
-                        // example: keep earliest creationDate as a simple "master" rule
                         if ($other->getCreationDate() < $customer->getCreationDate()) {
                             $customer->setCreationDate($other->getCreationDate());
                         }
 
-                        // you can add more field-level merge logic here
-                        // then delete the duplicate object:
+                        // additional merge rules can go here
+
                         $other->delete();
                     }
                 }
@@ -195,7 +213,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-            // optional flag
+            // optional:
             // $customer->setIsMasterProfile($isMasterProfile === 'Yes');
 
             $customer->save();
@@ -209,9 +227,6 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
 
     /**
      * Pick the master profile among duplicates.
-     * Example rule:
-     *  - If one has DealerID and others do not → keep that as master
-     *  - else keep the oldest profile (smallest creationDate)
      *
      * @param DataObject\Customer[] $profiles
      */
