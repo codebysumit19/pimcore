@@ -1,8 +1,6 @@
 <?php
 
-
 namespace App\Command;
-
 
 use Carbon\Carbon;
 use Pimcore\Console\AbstractCommand;
@@ -13,7 +11,13 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-
+/**
+ * CSV FORMAT (must match):
+ * name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date,isMasterProfile
+ *
+ * - segment: "High-Value Customers","Frequent Buyers","Inactive 90 Days"
+ * - isMasterProfile: "Yes" or "No"
+ */
 #[AsCommand(
     name: 'app:import-customers',
     description: 'Import customers from CSV into /Customers data object folder with identity resolution'
@@ -25,17 +29,14 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
         // 1) CSV location (relative to project root)
         $csvPath = PIMCORE_PROJECT_ROOT . '/var/import/customers.csv';
 
-
         if (!is_readable($csvPath)) {
             $this->writeError('CSV not readable: ' . $csvPath);
             return 1;
         }
 
-
         // 2) Ensure /Customers folder exists and get it
         /** @var DataObject\Folder $customersFolder */
         $customersFolder = ObjectService::createFolderByPath('/Customers');
-
 
         // 3) Open CSV
         if (($handle = fopen($csvPath, 'r')) === false) {
@@ -43,32 +44,28 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             return 1;
         }
 
-
         // Expected header:
-        // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
+        // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date,isMasterProfile
         $header = fgetcsv($handle);
         if ($header === false) {
             $this->writeError('Empty CSV (no header row).');
             return 1;
         }
 
-
         $rowNumber = 0;
         $created   = 0;
         $updated   = 0;
 
-
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
-
-            if (count($row) < 9) {
-                $this->writeError("Row $rowNumber has fewer than 9 columns, skipping.");
+            // skip bad rows
+            if (count($row) < 10) {
+                $this->writeError("Row $rowNumber has fewer than 10 columns, skipping.");
                 continue;
             }
 
-//Uses list assignment to map CSV columns into individual variables.
-
+            // Map CSV → variables
             [
                 $name,
                 $email,
@@ -79,14 +76,20 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $engagementSource,
                 $segment,
                 $lastEventDate,
+                $isMasterProfile,
             ] = $row;
 
-//Normalizes identifiers by trimming whitespace and casting to string.
-
-            $email    = trim((string)$email);
-            $phone    = trim((string)$phone);
-            $dealerId = trim((string)$dealerId);
-
+            // Normalize identifiers
+            $name            = trim((string)$name);
+            $email           = trim((string)$email);
+            $phone           = trim((string)$phone);
+            $dealerId        = trim((string)$dealerId);
+            $region          = trim((string)$region);
+            $territory       = trim((string)$territory);
+            $engagementSource = trim((string)$engagementSource);
+            $segment         = trim((string)$segment);
+            $lastEventDate   = trim((string)$lastEventDate);
+            $isMasterProfile = trim((string)$isMasterProfile); // "Yes"/"No"
 
             // ---------- Identity resolution ----------
             // 1) try match by email (primary)
@@ -98,7 +101,6 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-
             // 2) if not found and phone present, try match by phone
             if (!$customer && $phone !== '') {
                 $existing = DataObject\Customer::getByPhone($phone, 1);
@@ -106,7 +108,6 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                     $customer = $existing;
                 }
             }
-
 
             // 3) if still not found and dealer_id present, match by dealer_id (B2B)
             if (!$customer && $dealerId !== '') {
@@ -116,30 +117,30 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-
             // ---------- Create or update ----------
             if ($customer instanceof DataObject\Customer) {
-                // existing profile → UPDATE
+                // existing profile → UPDATE (enrich)
                 $updated++;
             } else {
                 // new profile → CREATE
                 $customer = new DataObject\Customer();
                 $customer->setParent($customersFolder);
 
-
                 $key = ElementService::getValidKey('customer' . $rowNumber, 'object');
                 $customer->setKey($key);
                 $customer->setPublished(true);
 
-
                 $created++;
             }
 
+            // ---------- Enrichment rules (fill only when CSV has value) ----------
 
-            // Map CSV fields to object fields (overwrite / enrich)
-            if (!empty($name)) {
+            // name
+            if ($name !== '') {
                 $customer->setName($name);
             }
+
+            // identifiers
             if ($email !== '') {
                 $customer->setEmail($email);
             }
@@ -149,30 +150,27 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             if ($dealerId !== '') {
                 $customer->setDealer_id($dealerId);
             }
-            if (!empty($region)) {
+
+            // profile attributes
+            if ($region !== '') {
                 $customer->setRegion($region);
             }
-            if (!empty($territory)) {
+            if ($territory !== '') {
                 $customer->setTerritory($territory);
             }
-            if (!empty($engagementSource)) {
+            if ($engagementSource !== '') {
                 $customer->setEngagementsource($engagementSource);
             }
 
-
-            // overwrite segments from CSV, do NOT merge
-            if (!empty($segment)) {
-                // if your segments field is multiselect but CSV has a single value
+            // segments (overwrite only when CSV has value)
+            if ($segment !== '') {
+                // Assuming Pimcore field is multiselect / multihref-like
                 $customer->setSegments([$segment]);
-            } else {
-                // if CSV is empty, you can either clear or keep old value.
-                // To clear:
-                // $customer->setSegments([]);
             }
-
+            // else: keep existing segments as-is (no clear)
 
             // last event date: keep latest
-            if (!empty($lastEventDate)) {
+            if ($lastEventDate !== '') {
                 try {
                     $newDate = Carbon::parse($lastEventDate);
                     $current = $customer->getLastEventDate();
@@ -184,14 +182,15 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
+            // Optional: store isMasterProfile if you add a field in the class
+            // Example if you have a checkbox or select:
+            // $customer->setIsMasterProfile($isMasterProfile === 'Yes');
 
             // Save (create or update)
             $customer->save();
         }
 
-
         fclose($handle);
-
 
         $this->writeInfo("Customer import finished. Created $created objects, updated $updated objects.");
         return 0;
