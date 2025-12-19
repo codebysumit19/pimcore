@@ -6,6 +6,7 @@ security:
         pimcore_admin:
             id: Pimcore\Security\User\UserProvider
 
+        # API-only users (in-memory)
         api_users:
             memory:
                 users:
@@ -18,7 +19,7 @@ security:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
             security: false
 
-        # API firewall
+        # This secures ALL /api/... endpoints
         api:
             pattern: ^/api
             stateless: true
@@ -36,7 +37,7 @@ security:
         pimcore_admin: '%pimcore_admin_bundle.firewall_settings%'
 
     access_control:
-        # Protect /api/* using ROLE_API
+        # Any /api/... requires ROLE_API (i.e. api_user:api_password)
         - { path: ^/api, roles: ROLE_API }
 
         # Pimcore admin ACL  // DO NOT CHANGE!
@@ -50,4 +51,5 @@ security:
         - { path: ^/asset/webdav, roles: ROLE_PIMCORE_USER }
 
     role_hierarchy:
+        # Pimcore admin  // DO NOT CHANGE!
         ROLE_PIMCORE_ADMIN: [ROLE_PIMCORE_USER]
