@@ -1,18 +1,28 @@
 security:
+    password_hashers:
+        Symfony\Component\Security\Core\User\InMemoryUser: plaintext
+
     providers:
         pimcore_admin:
             id: Pimcore\Security\User\UserProvider
+
+        api_users:
+            memory:
+                users:
+                    api_user:
+                        password: api_password
+                        roles: ['ROLE_API']
 
     firewalls:
         dev:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
             security: false
 
-        # API firewall for any /api/* route
+        # API firewall
         api:
             pattern: ^/api
             stateless: true
-            provider: pimcore_admin
+            provider: api_users
             http_basic:
                 realm: 'API Area'
 
@@ -26,8 +36,8 @@ security:
         pimcore_admin: '%pimcore_admin_bundle.firewall_settings%'
 
     access_control:
-        # Protect all API routes with Pimcore users
-        - { path: ^/api, roles: ROLE_PIMCORE_USER }
+        # Protect /api/* using ROLE_API
+        - { path: ^/api, roles: ROLE_API }
 
         # Pimcore admin ACL  // DO NOT CHANGE!
         - { path: ^/admin/settings/display-custom-logo, roles: PUBLIC_ACCESS }
@@ -40,5 +50,4 @@ security:
         - { path: ^/asset/webdav, roles: ROLE_PIMCORE_USER }
 
     role_hierarchy:
-        # Pimcore admin  // DO NOT CHANGE!
         ROLE_PIMCORE_ADMIN: [ROLE_PIMCORE_USER]
