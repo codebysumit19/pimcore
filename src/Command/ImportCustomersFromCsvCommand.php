@@ -34,42 +34,21 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             return 1;
         }
 
-        // --- Detect delimiter from header line (comma or semicolon) ---
-        $firstLine = fgets($handle);
-        if ($firstLine === false) {
+        // header row
+        $header = fgetcsv($handle);
+        if ($header === false) {
             $this->writeError('Empty CSV (no header row).');
             return 1;
         }
-
-        rewind($handle);
-
-        $delimiter = ',';
-        if (substr_count($firstLine, ';') > substr_count($firstLine, ',')) {
-            $delimiter = ';';
-        }
-
-        $this->writeInfo("Detected CSV delimiter: '{$delimiter}'");
-
-        // Read header with chosen delimiter
-        $header = fgetcsv($handle, 0, $delimiter);
-        if ($header === false) {
-            $this->writeError('Could not read header row.');
-            return 1;
-        }
-
-        $this->writeInfo('Header columns: ' . implode(' | ', $header) . ' (count: ' . count($header) . ')');
 
         $rowNumber = 0;
         $created   = 0;
         $updated   = 0;
 
-        while (($row = fgetcsv($handle, 0, $delimiter)) !== false) {
+        while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
-            $colCount = count($row);
-            $this->writeInfo("Row $rowNumber has $colCount columns");
 
-            // your cleaned CSV: name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date
-            if ($colCount < 9) {
+            if (count($row) < 9) {
                 $this->writeError("Row $rowNumber has fewer than 9 columns, skipping.");
                 continue;
             }
@@ -84,109 +63,107 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $engagementSource,
                 $segment,
                 $lastEventDate,
-            ] = array_slice($row, 0, 9);
+            ] = $row;
 
-            // Normalize
-            $name              = trim((string)$name);
-            // remove trailing space + number from name, e.g. "Priya Kumar 1" -> "Priya Kumar"
-            $name              = preg_replace('/\s+\d+$/', '', $name);
-            $email             = trim((string)$email);
-            $phone             = trim((string)$phone);
-            $dealerId          = trim((string)$dealerId);
-            $region            = trim((string)$region);
-            $territory         = trim((string)$territory);
-            $engagementSource  = trim((string)$engagementSource);
-            $segment           = trim((string)$segment);
-            $lastEventDate     = trim((string)$lastEventDate);
+            // normalize
+            $name      = trim((string)$name);
+            $email     = trim((string)$email);
+            $phone     = trim((string)$phone);
+            $dealerId  = trim((string)$dealerId);
+            $region    = trim((string)$region);
+            $territory = trim((string)$territory);
+            $engagementSource = trim((string)$engagementSource);
+            $segment   = trim((string)$segment);
+            $lastEventDate = trim((string)$lastEventDate);
 
-            // --------- FIND / MERGE LOGIC ---------
-            /** @var DataObject\Customer[] $candidateProfiles */
-            $candidateProfiles = [];
+            // ---------- Identity resolution: collect all candidates ----------
+            /** @var DataObject\Customer[] $candidates */
+            $candidates = [];
 
-            // Email = primary identifier
+            // 1) Email = primary identifier
             if ($email !== '') {
-                $list = DataObject\Customer::getByEmail($email, [
-                    'limit'  => 500,
-                    'offset' => 0,
-                ]);
-                foreach ($list as $item) {
-                    $candidateProfiles[$item->getId()] = $item;
+                $list = DataObject\Customer::getByEmail($email, ['limit' => 50]);
+                if ($list instanceof \Pimcore\Model\DataObject\Listing) {
+                    foreach ($list as $item) {
+                        $candidates[$item->getId()] = $item;
+                    }
+                } elseif ($list instanceof DataObject\Customer) {
+                    $candidates[$list->getId()] = $list;
                 }
             }
 
-            // Phone = secondary identifier
+            // 2) Phone = secondary
             if ($phone !== '') {
-                $list = DataObject\Customer::getByPhone($phone, [
-                    'limit'  => 500,
-                    'offset' => 0,
-                ]);
-                foreach ($list as $item) {
-                    $candidateProfiles[$item->getId()] = $item;
+                $list = DataObject\Customer::getByPhone($phone, ['limit' => 50]);
+                if ($list instanceof \Pimcore\Model\DataObject\Listing) {
+                    foreach ($list as $item) {
+                        $candidates[$item->getId()] = $item;
+                    }
+                } elseif ($list instanceof DataObject\Customer) {
+                    $candidates[$list->getId()] = $list;
                 }
             }
 
-            // DealerID = B2B match rule
+            // 3) DealerID = B2B match rule
             if ($dealerId !== '') {
-                $list = DataObject\Customer::getByDealer_id($dealerId, [
-                    'limit'  => 500,
-                    'offset' => 0,
-                ]);
-                foreach ($list as $item) {
-                    $candidateProfiles[$item->getId()] = $item;
+                $list = DataObject\Customer::getByDealer_id($dealerId, ['limit' => 50]);
+                if ($list instanceof \Pimcore\Model\DataObject\Listing) {
+                    foreach ($list as $item) {
+                        $candidates[$item->getId()] = $item;
+                    }
+                } elseif ($list instanceof DataObject\Customer) {
+                    $candidates[$list->getId()] = $list;
                 }
             }
 
-            $candidateProfiles = array_values($candidateProfiles);
+            $candidates = array_values($candidates);
 
-            /** @var DataObject\Customer|null $customer */
-            $customer = null;
-
-            if (count($candidateProfiles) === 0) {
-                // no match → new profile
+            /** @var DataObject\Customer $customer */
+            if (count($candidates) === 0) {
+                // no existing → create new
                 $customer = new DataObject\Customer();
                 $customer->setParent($customersFolder);
                 $key = ElementService::getValidKey('customer' . $rowNumber, 'object');
                 $customer->setKey($key);
                 $customer->setPublished(true);
                 $created++;
+            } elseif (count($candidates) === 1) {
+                // single match → update
+                $customer = $candidates[0];
+                $updated++;
             } else {
-                // at least one existing profile
-                if (count($candidateProfiles) === 1) {
-                    $customer = $candidateProfiles[0];
-                } else {
-                    // MULTIPLE matches → choose master & merge
-                    $customer = $this->pickMasterProfile($candidateProfiles);
+                // multiple matches → pick master = latest lastEventDate
+                $customer = $this->pickMasterByLatestLastEventDate($candidates);
 
-                    foreach ($candidateProfiles as $other) {
-                        if ($other->getId() === $customer->getId()) {
-                            continue;
-                        }
-
-                        // keep earliest creationDate
-                        if ($other->getCreationDate() < $customer->getCreationDate()) {
-                            $customer->setCreationDate($other->getCreationDate());
-                        }
-
-                        // TODO: if you want to merge arrays like segments from old records, do it here
-                        // Example:
-                        // $mergedSegments = array_unique(array_merge(
-                        //     (array)$customer->getSegments(),
-                        //     (array)$other->getSegments()
-                        // ));
-                        // $customer->setSegments($mergedSegments);
-
-                        $other->delete();
+                // merge & delete the other duplicates
+                foreach ($candidates as $other) {
+                    if ($other->getId() === $customer->getId()) {
+                        continue;
                     }
+
+                    // keep earliest creation date for the master
+                    if ($other->getCreationDate() < $customer->getCreationDate()) {
+                        $customer->setCreationDate($other->getCreationDate());
+                    }
+
+                    // OPTIONAL: merge segments, etc., here if needed
+                    // $mergedSegments = array_unique(array_merge(
+                    //     (array)$customer->getSegments(),
+                    //     (array)$other->getSegments()
+                    // ));
+                    // $customer->setSegments($mergedSegments);
+
+                    $other->delete();
                 }
+
                 $updated++;
             }
 
-            // --------- ENRICH MASTER PROFILE ---------
+            // ---------- Enrich / overwrite master profile ----------
 
             if ($name !== '') {
                 $customer->setName($name);
             }
-
             if ($email !== '') {
                 $customer->setEmail($email);
             }
@@ -196,7 +173,6 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             if ($dealerId !== '') {
                 $customer->setDealer_id($dealerId);
             }
-
             if ($region !== '') {
                 $customer->setRegion($region);
             }
@@ -207,11 +183,12 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setEngagementsource($engagementSource);
             }
 
-            // segments – example: keep only latest segment from CSV
+            // overwrite segments from CSV
             if ($segment !== '') {
                 $customer->setSegments([$segment]);
             }
 
+            // last event date: keep the latest
             if ($lastEventDate !== '') {
                 try {
                     $newDate = Carbon::parse($lastEventDate);
@@ -234,111 +211,43 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
     }
 
     /**
-     * Pick the master profile among duplicates (golden record).
-     *
-     * Strategy:
-     *  - Prefer records with DealerID (B2B anchor).
-     *  - Prefer records from trusted source (CMS/CRM/etc.) if you store that.
-     *  - Prefer records with more filled fields (completeness).
-     *  - Prefer the most recently modified/updated profile if tie.
+     * Choose master profile among duplicates: the one with the latest lastEventDate.
+     * If no lastEventDate set, fall back to most recently modified, then earliest created.
      *
      * @param DataObject\Customer[] $profiles
      */
-    private function pickMasterProfile(array $profiles): DataObject\Customer
+    private function pickMasterByLatestLastEventDate(array $profiles): DataObject\Customer
     {
-        // If you have a "sourceSystem" or similar field, define its priority here.
-        // Example mapping: CRM (3) > DealerSystem (2) > Website (1) > Other (0)
-        $sourcePriority = [
-            'CRM'          => 3,
-            'DEALER'       => 2,
-            'WEBSITE'      => 1,
-        ];
+        usort($profiles, function (DataObject\Customer $a, DataObject\Customer $b) {
+            $aDate = $a->getLastEventDate();
+            $bDate = $b->getLastEventDate();
 
-        $scored = [];
-
-        foreach ($profiles as $profile) {
-            $score = 0;
-
-            $dealerId = (string)$profile->getDealer_id();
-            $email    = (string)$profile->getEmail();
-            $phone    = (string)$profile->getPhone();
-            $name     = (string)$profile->getName();
-            $region   = (string)$profile->getRegion();
-            $territory = (string)$profile->getTerritory();
-            $segments = (array)$profile->getSegments();
-            $lastEventDate = $profile->getLastEventDate(); // Carbon|DateTime|null
-            $modified = $profile->getModificationDate();
-            $created  = $profile->getCreationDate();
-
-            // 1) DealerID preference (B2B anchor)
-            if ($dealerId !== '') {
-                $score += 50;
-            }
-
-            // 2) Source priority, if you have something like getSourceSystem()
-            $source = method_exists($profile, 'getSourceSystem') ? (string)$profile->getSourceSystem() : '';
-            if ($source !== '' && isset($sourcePriority[$source])) {
-                $score += $sourcePriority[$source] * 10;
-            }
-
-            // 3) Data completeness: count the non-empty fields
-            $completenessFields = [
-                $email,
-                $phone,
-                $name,
-                $region,
-                $territory,
-                $dealerId,
-            ];
-            $filledCount = 0;
-            foreach ($completenessFields as $f) {
-                if (trim((string)$f) !== '') {
-                    $filledCount++;
+            // 1) latest lastEventDate DESC
+            if ($aDate instanceof \DateTimeInterface || $bDate instanceof \DateTimeInterface) {
+                if ($aDate && $bDate) {
+                    return $bDate <=> $aDate; // newer first
+                }
+                // one has date, the other not → with date wins
+                if ($aDate && !$bDate) {
+                    return -1;
+                }
+                if (!$aDate && $bDate) {
+                    return 1;
                 }
             }
-            // each filled field adds 2 points
-            $score += $filledCount * 2;
 
-            // additional weight if there is at least one segment
-            if (count($segments) > 0) {
-                $score += 2;
+            // 2) if no lastEventDate on both or equal → latest modificationDate
+            $aMod = $a->getModificationDate();
+            $bMod = $b->getModificationDate();
+            if ($aMod !== $bMod) {
+                return $bMod <=> $aMod; // newer first
             }
 
-            // 4) Recency: prefer the most recent activity
-            if ($lastEventDate instanceof \DateTimeInterface) {
-                $score += 5;
-            }
-
-            // small bonus for more recent modification date
-            if ($modified) {
-                // normalize to smaller number to avoid overflow
-                $score += (int)floor($modified / 1000000);
-            }
-
-            $scored[] = [
-                'profile' => $profile,
-                'score'   => $score,
-                'modified'=> $modified ?: 0,
-                'created' => $created ?: 0,
-            ];
-        }
-
-        // Sort by: score DESC, modified DESC, created ASC
-        usort($scored, function (array $a, array $b) {
-            // score DESC
-            if ($a['score'] !== $b['score']) {
-                return $b['score'] <=> $a['score'];
-            }
-
-            // modified DESC
-            if ($a['modified'] !== $b['modified']) {
-                return $b['modified'] <=> $a['modified'];
-            }
-
-            // created ASC (older record wins if still tie)
-            return $a['created'] <=> $b['created'];
+            // 3) final tie‑breaker → oldest creationDate
+            return $a->getCreationDate() <=> $b->getCreationDate();
         });
 
-        return $scored[0]['profile'];
+        // after sort, first element is master
+        return $profiles[0];
     }
 }
