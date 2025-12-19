@@ -11,13 +11,6 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 
-/**
- * CSV FORMAT (must match):
- * name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date,isMasterProfile
- *
- * - segment: "High-Value Customers","Frequent Buyers","Inactive 90 Days"
- * - isMasterProfile: "Yes" or "No"
- */
 #[AsCommand(
     name: 'app:import-customers',
     description: 'Import customers from CSV into /Customers data object folder with identity resolution'
@@ -26,7 +19,6 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
 {
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // 1) CSV location (relative to project root)
         $csvPath = PIMCORE_PROJECT_ROOT . '/var/import/customers.csv';
 
         if (!is_readable($csvPath)) {
@@ -34,17 +26,14 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             return 1;
         }
 
-        // 2) Ensure /Customers folder exists and get it
         /** @var DataObject\Folder $customersFolder */
         $customersFolder = ObjectService::createFolderByPath('/Customers');
 
-        // 3) Open CSV
         if (($handle = fopen($csvPath, 'r')) === false) {
             $this->writeError('Cannot open CSV file');
             return 1;
         }
 
-        // Expected header:
         // name,email,phone,dealer_id,region,territory,engagementsource,segment,last event date,isMasterProfile
         $header = fgetcsv($handle);
         if ($header === false) {
@@ -59,13 +48,11 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
         while (($row = fgetcsv($handle)) !== false) {
             $rowNumber++;
 
-            // skip bad rows
             if (count($row) < 10) {
                 $this->writeError("Row $rowNumber has fewer than 10 columns, skipping.");
                 continue;
             }
 
-            // Map CSV → variables
             [
                 $name,
                 $email,
@@ -79,7 +66,7 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $isMasterProfile,
             ] = $row;
 
-            // Normalize identifiers
+            // Normalize
             $name            = trim((string)$name);
             $email           = trim((string)$email);
             $phone           = trim((string)$phone);
@@ -91,56 +78,87 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
             $lastEventDate   = trim((string)$lastEventDate);
             $isMasterProfile = trim((string)$isMasterProfile); // "Yes"/"No"
 
-            // ---------- Identity resolution ----------
-            // 1) try match by email (primary)
-            $customer = null;
+            // --------- FIND / MERGE LOGIC ---------
+            // collect all possible matches (email, phone, dealerId)
+            /** @var DataObject\Customer[] $candidateProfiles */
+            $candidateProfiles = [];
+
             if ($email !== '') {
-                $existing = DataObject\Customer::getByEmail($email, 1);
-                if ($existing instanceof DataObject\Customer) {
-                    $customer = $existing;
+                $list = DataObject\Customer::getByEmail($email, [
+                    'limit' => 50,
+                    'offset' => 0,
+                ]);
+                foreach ($list as $item) {
+                    $candidateProfiles[$item->getId()] = $item;
                 }
             }
 
-            // 2) if not found and phone present, try match by phone
-            if (!$customer && $phone !== '') {
-                $existing = DataObject\Customer::getByPhone($phone, 1);
-                if ($existing instanceof DataObject\Customer) {
-                    $customer = $existing;
+            if ($phone !== '') {
+                $list = DataObject\Customer::getByPhone($phone, [
+                    'limit' => 50,
+                    'offset' => 0,
+                ]);
+                foreach ($list as $item) {
+                    $candidateProfiles[$item->getId()] = $item;
                 }
             }
 
-            // 3) if still not found and dealer_id present, match by dealer_id (B2B)
-            if (!$customer && $dealerId !== '') {
-                $existing = DataObject\Customer::getByDealer_id($dealerId, 1);
-                if ($existing instanceof DataObject\Customer) {
-                    $customer = $existing;
+            if ($dealerId !== '') {
+                $list = DataObject\Customer::getByDealer_id($dealerId, [
+                    'limit' => 50,
+                    'offset' => 0,
+                ]);
+                foreach ($list as $item) {
+                    $candidateProfiles[$item->getId()] = $item;
                 }
             }
 
-            // ---------- Create or update ----------
-            if ($customer instanceof DataObject\Customer) {
-                // existing profile → UPDATE (enrich)
-                $updated++;
-            } else {
-                // new profile → CREATE
+            $candidateProfiles = array_values($candidateProfiles);
+
+            /** @var DataObject\Customer|null $customer */
+            $customer = null;
+
+            if (count($candidateProfiles) === 0) {
+                // no match → new profile
                 $customer = new DataObject\Customer();
                 $customer->setParent($customersFolder);
-
                 $key = ElementService::getValidKey('customer' . $rowNumber, 'object');
                 $customer->setKey($key);
                 $customer->setPublished(true);
-
                 $created++;
+            } else {
+                // at least one existing profile
+                if (count($candidateProfiles) === 1) {
+                    $customer = $candidateProfiles[0];
+                } else {
+                    // MULTIPLE matches → choose master & merge
+                    $customer = $this->pickMasterProfile($candidateProfiles);
+
+                    // merge data from other profiles into master (simple example)
+                    foreach ($candidateProfiles as $other) {
+                        if ($other->getId() === $customer->getId()) {
+                            continue;
+                        }
+
+                        // example: keep earliest creationDate as a simple "master" rule
+                        if ($other->getCreationDate() < $customer->getCreationDate()) {
+                            $customer->setCreationDate($other->getCreationDate());
+                        }
+
+                        // you can add more field-level merge logic here
+                        // then delete the duplicate object:
+                        $other->delete();
+                    }
+                }
+                $updated++;
             }
 
-            // ---------- Enrichment rules (fill only when CSV has value) ----------
+            // --------- ENRICH MASTER PROFILE ---------
 
-            // name
             if ($name !== '') {
                 $customer->setName($name);
             }
 
-            // identifiers
             if ($email !== '') {
                 $customer->setEmail($email);
             }
@@ -151,7 +169,6 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setDealer_id($dealerId);
             }
 
-            // profile attributes
             if ($region !== '') {
                 $customer->setRegion($region);
             }
@@ -162,14 +179,10 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 $customer->setEngagementsource($engagementSource);
             }
 
-            // segments (overwrite only when CSV has value)
             if ($segment !== '') {
-                // Assuming Pimcore field is multiselect / multihref-like
                 $customer->setSegments([$segment]);
             }
-            // else: keep existing segments as-is (no clear)
 
-            // last event date: keep latest
             if ($lastEventDate !== '') {
                 try {
                     $newDate = Carbon::parse($lastEventDate);
@@ -182,11 +195,9 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
                 }
             }
 
-            // Optional: store isMasterProfile if you add a field in the class
-            // Example if you have a checkbox or select:
+            // optional flag
             // $customer->setIsMasterProfile($isMasterProfile === 'Yes');
 
-            // Save (create or update)
             $customer->save();
         }
 
@@ -194,5 +205,30 @@ class ImportCustomersFromCsvCommand extends AbstractCommand
 
         $this->writeInfo("Customer import finished. Created $created objects, updated $updated objects.");
         return 0;
+    }
+
+    /**
+     * Pick the master profile among duplicates.
+     * Example rule:
+     *  - If one has DealerID and others do not → keep that as master
+     *  - else keep the oldest profile (smallest creationDate)
+     *
+     * @param DataObject\Customer[] $profiles
+     */
+    private function pickMasterProfile(array $profiles): DataObject\Customer
+    {
+        // 1) prefer profile that has DealerID
+        $withDealer = array_filter($profiles, function (DataObject\Customer $c) {
+            return (string)$c->getDealer_id() !== '';
+        });
+
+        $candidates = $withDealer ?: $profiles;
+
+        // 2) among candidates, keep oldest record as master
+        usort($candidates, function (DataObject\Customer $a, DataObject\Customer $b) {
+            return $a->getCreationDate() <=> $b->getCreationDate();
+        });
+
+        return $candidates[0];
     }
 }
