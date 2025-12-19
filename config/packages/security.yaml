@@ -8,6 +8,14 @@ security:
             pattern: ^/(_(profiler|wdt)|css|images|js)/
             security: false
 
+        # API firewall for /api/*
+        api:
+            pattern: ^/api
+            stateless: true
+            provider: pimcore_admin
+            http_basic:
+                realm: 'API Area'
+
         # Pimcore WebDAV HTTP basic // DO NOT CHANGE!
         pimcore_webdav:
             pattern: ^/asset/webdav
@@ -18,7 +26,10 @@ security:
         pimcore_admin: '%pimcore_admin_bundle.firewall_settings%'
 
     access_control:
-        # Pimcore admin ACl  // DO NOT CHANGE!
+        # Protect all /api/* routes: require a logged-in Pimcore user
+        - { path: ^/api, roles: ROLE_PIMCORE_USER }
+
+        # Pimcore admin ACL  // DO NOT CHANGE!
         - { path: ^/admin/settings/display-custom-logo, roles: PUBLIC_ACCESS }
         - { path: ^/admin/login/2fa-verify, roles: IS_AUTHENTICATED_2FA_IN_PROGRESS }
         - { path: ^/admin/login/2fa-setup, roles: ROLE_PIMCORE_USER }
@@ -29,5 +40,4 @@ security:
         - { path: ^/asset/webdav, roles: ROLE_PIMCORE_USER }
 
     role_hierarchy:
-        # Pimcore admin  // DO NOT CHANGE!
         ROLE_PIMCORE_ADMIN: [ROLE_PIMCORE_USER]
