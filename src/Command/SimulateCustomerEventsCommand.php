@@ -1,5 +1,3 @@
-<?php
-
 namespace App\Command;
 
 use Carbon\Carbon;
@@ -15,7 +13,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 #[AsCommand(
     name: 'app:simulate-events',
-    description: 'Create mock events (Product View, Catalog Download, Price Request, Dealer Inquiry) for customers'
+    description: 'Create one mock event per customer'
 )]
 class SimulateCustomerEventsCommand extends AbstractCommand
 {
@@ -25,45 +23,43 @@ class SimulateCustomerEventsCommand extends AbstractCommand
         $eventsFolder = ObjectService::createFolderByPath('/CustomerEvents');
 
         $list = new DataObject\Customer\Listing();
+        // remove or change limit as you like
         $list->setLimit(10);
 
-        $types = ['ProductView', 'CatalogDownload', 'PriceRequest', 'DealerInquiry'];
-
+        $types   = ['ProductView', 'CatalogDownload', 'PriceRequest', 'DealerInquiry'];
         $created = 0;
+        $index   = 1; // for event1, event2, ...
 
         foreach ($list as $customer) {
             if (!$customer instanceof Customer || !$customer->getId()) {
                 continue;
             }
 
-            for ($i = 0; $i < 1; $i++) {
-                $type = $types[array_rand($types)];
+            // one event per customer
+            $type = $types[array_rand($types)];
 
-                $event = new Events();
-                $event->setParent($eventsFolder);
-                $event->setKey(
-                    ElementService::getValidKey(
-                        'event_' . $customer->getId() . '_' . uniqid(),
-                        'object'
-                    )
-                );
-                $event->setPublished(true);
+            $event = new Events();
+            $event->setParent($eventsFolder);
 
-                // many-to-one relation field "customer"
-                $event->setCustomer($customer);
+            // key: event1, event2, ... (still run through getValidKey for safety)
+            $rawKey = 'event' . $index;
+            $key    = ElementService::getValidKey($rawKey, 'object');
+            $event->setKey($key);
 
-                // select field "eventType"
-                $event->setEventType($type);
+            $event->setPublished(true);
 
-                // description field (optional)
-                $event->setDescription('Mock ' . $type . ' event');
+            // many-to-one relation to this customer
+            $event->setCustomer($customer);
 
-                // date & time field "eventTime"
-                $event->setEventTime(Carbon::now()->subDays(rand(0, 30)));
+            $event->setEventType($type);
+            $event->setDescription('Mock ' . $type . ' event');
 
-                $event->save();
-                $created++;
-            }
+            // random time in last 30 days
+            $event->setEventTime(Carbon::now()->subDays(rand(0, 30)));
+
+            $event->save();
+            $created++;
+            $index++;
         }
 
         $this->writeInfo("Created $created mock customer events.");
