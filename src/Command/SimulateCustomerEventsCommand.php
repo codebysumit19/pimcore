@@ -24,7 +24,7 @@ class SimulateCustomerEventsCommand extends AbstractCommand
 
         $list = new DataObject\Customer\Listing();
         // remove or change limit as you like
-        $list->setLimit(10);
+        $list->setLimit(20);
 
         $types   = ['ProductView', 'CatalogDownload', 'PriceRequest', 'DealerInquiry'];
         $created = 0;
